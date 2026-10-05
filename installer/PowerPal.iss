@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.2.1"
 #endif
 #ifndef AppIdentity
   #define AppIdentity "PowerPal.Windows"
@@ -38,7 +38,7 @@ Name: "{group}\PowerPal"; Filename: "{app}\PowerPal.exe"
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PowerPal"; ValueData: """{app}\PowerPal.exe"" --background"; Tasks: startup; Flags: uninsdeletevalue; Check: ShouldSetStartup
 [Run]
-Filename: "{app}\PowerPal.exe"; Parameters: "--background"; Flags: nowait; Check: ShouldLaunch
+Filename: "{app}\PowerPal.exe"; Parameters: "{code:LaunchParameters}"; Flags: nowait; Check: ShouldLaunch
 [Code]
 function HasParameter(Value: String): Boolean;
 var I: Integer;
@@ -50,6 +50,11 @@ end;
 function IsPowerPalUpdate: Boolean;
 begin
   Result := HasParameter('/POWERPALUPDATE');
+end;
+function LaunchParameters(Param: String): String;
+begin
+  if IsPowerPalUpdate then Result := '--background'
+  else Result := '--show';
 end;
 function ShouldSetStartup: Boolean;
 begin

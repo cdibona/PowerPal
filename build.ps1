@@ -1,4 +1,4 @@
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.2.0')
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.2.1')
 $ErrorActionPreference = 'Stop'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 New-Item -ItemType Directory -Force "$PSScriptRoot/bin/v$Version" | Out-Null

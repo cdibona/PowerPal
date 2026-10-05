@@ -118,14 +118,22 @@ namespace PowerPal {
     }
 
     internal static class Program {
+        internal static bool BackgroundOnStart(string[] args) { return !args.Contains("--show") || args.Contains("--background"); }
         [STAThread] static int Main(string[] args) {
             if(args.Length>0 && args[0]=="--self-test") return Test();
+            if(args.Length>1 && args[0]=="--verify-public-release") {
+                var messages=new List<string>(); var updater=new ReleaseUpdater(message=>messages.Add(message));
+                string installer=updater.Check(true).GetAwaiter().GetResult();
+                if(installer!=null) messages.Add("PASS: public release downloaded and verified by the production updater: "+installer);
+                File.WriteAllLines(args[1],messages); return installer==null?1:0;
+            }
             if(args.Length>1 && args[0]=="--connect-github") { try { Preferences.ImportGitLogin().GetAwaiter().GetResult(); File.WriteAllText(args[1],"GitHub login connected and encrypted for this Windows account."); return 0; } catch(Exception ex) { File.WriteAllText(args[1],"Connection failed: "+ex.Message); return 1; } }
             if(args.Length>1 && args[0]=="--write-icon") { using(var icon=Brand.MakeIcon(Palette.Mint)) using(var file=File.Create(args[1])) icon.Save(file); return 0; }
             if(args.Length>1 && args[0]=="--runtime-test") {
                 Application.EnableVisualStyles(); string result=Path.Combine(args[1],"runtime-result.txt"); Directory.CreateDirectory(args[1]);
-                using(var app=new Tray(true,Path.Combine(args[1],"History"))) using(var end=new System.Windows.Forms.Timer { Interval=14000 }) {
-                    end.Tick+=delegate { end.Stop(); try { app.TestWindowLifecycle(); var saved=new History(Path.Combine(args[1],"History")).Load(DateTime.UtcNow.AddMinutes(-2)); if(saved.Count<2) throw new Exception("Expected two background samples"); File.WriteAllText(result,"PASS: hidden start, background recording, reopen, minimize to tray, close to tray. Samples: "+saved.Count); } catch(Exception ex) { File.WriteAllText(result,ex.ToString()); } app.ExitThread(); };
+                bool background=BackgroundOnStart(args);
+                using(var app=new Tray(background,Path.Combine(args[1],"History"))) using(var end=new System.Windows.Forms.Timer { Interval=20000 }) {
+                    end.Tick+=delegate { end.Stop(); try { app.TestWindowLifecycle(background); var saved=new History(Path.Combine(args[1],"History")).Load(DateTime.UtcNow.AddMinutes(-2)); if(saved.Count<2) throw new Exception("Expected two battery samples"); var activityRows=new ActivityHistory(Path.Combine(args[1],"History","Activity")).Lines(DateTime.UtcNow.AddMinutes(-2)).Skip(1).ToList(); if(activityRows.Select(row=>row.Split(',')[0]).Distinct().Count()<2) throw new Exception("Expected two persisted app activity snapshots"); File.WriteAllText(result,"PASS: "+(background?"hidden":"visible")+" start, battery and app activity recording, reopen, minimize to tray, close to tray. Battery samples: "+saved.Count+"; activity rows: "+activityRows.Count); } catch(Exception ex) { File.WriteAllText(result,ex.ToString()); } app.ExitThread(); };
                     end.Start(); Application.Run(app);
                 }
                 return File.ReadAllText(result).StartsWith("PASS")?0:1;
@@ -145,7 +153,7 @@ namespace PowerPal {
             bool created; using(var mutex=new Mutex(true,"Local\\PowerPal.Tray",out created)) {
                 if(!created) { MessageBox.Show("PowerPal is already running in the system tray."); return 0; }
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                try { Application.Run(new Tray(args.Contains("--background"))); } catch(Exception ex) { MessageBox.Show(ex.Message,"PowerPal could not start"); return 1; }
+                try { Application.Run(new Tray(BackgroundOnStart(args))); } catch(Exception ex) { MessageBox.Show(ex.Message,"PowerPal could not start"); return 1; }
             }
             return 0;
         }
@@ -161,7 +169,7 @@ namespace PowerPal {
                 File.AppendAllText(Directory.GetFiles(folder)[0],"partial,row\n");
                 if(h.Load(DateTime.UtcNow.AddMinutes(-1)).Count!=1 || h.Load(DateTime.UtcNow.AddDays(1)).Count!=0) throw new Exception("Persistence failed");
                 RegressionTests.Run(folder);
-                File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"test-result.txt"),"PASS: units, missing values, relative rates, CSV culture/round trip, persistence, malformed row recovery, date filter, CPU normalization, release parsing, private asset URL restrictions, digest verification, interrupted-row append recovery.");
+                File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"test-result.txt"),"PASS: units, missing values, relative rates, CSV culture/round trip, persistence, malformed row recovery, date filter, CPU normalization, release parsing, private asset URL restrictions, digest verification, interrupted-row append recovery, startup modes, activity CSV persistence/export, power-event transitions, bounded resource histories.");
                 return 0;
             } catch(Exception ex) { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"test-result.txt"),ex.ToString()); return 1; }
             finally { if(Directory.Exists(folder)) Directory.Delete(folder,true); }

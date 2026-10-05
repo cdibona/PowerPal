@@ -79,20 +79,25 @@ namespace PowerPal {
             if(new FileInfo(file).Length!=size) return false;
             using(var sha=SHA256.Create()) using(var stream=File.OpenRead(file)) return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").Equals(digest,StringComparison.OrdinalIgnoreCase);
         }
-        public async Task<string> Check() {
+        public async Task<string> Check(bool verifyPublicRelease=false) {
             status("Checking GitHub releases...");
             try {
                 ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-                string token=Preferences.Token();
+                string token=null;
                 using(var handler=new HttpClientHandler { AllowAutoRedirect=false }) using(var client=new HttpClient(handler) { Timeout=TimeSpan.FromMinutes(3) }) {
                     client.DefaultRequestHeaders.UserAgent.ParseAdd("PowerPal/"+Current.ToString(3));
                     string json;
-                    using(var request=Request(new Uri(Api+"releases/latest"),token,false)) using(var response=await client.SendAsync(request)) {
+                    var latest=await Latest(client,null);
+                    if(latest.StatusCode==HttpStatusCode.NotFound && !verifyPublicRelease) {
+                        try { token=Preferences.Token(); } catch { token=null; }
+                        if(!string.IsNullOrWhiteSpace(token)) { latest.Dispose(); latest=await Latest(client,token); }
+                    }
+                    using(var response=latest) {
                         if(response.StatusCode==HttpStatusCode.NotFound) { status("No release available, or private repository access needed. Open Settings to connect GitHub."); return null; }
                         if(response.StatusCode==HttpStatusCode.Unauthorized || response.StatusCode==HttpStatusCode.Forbidden) { status("GitHub access unavailable or rate limited. Check your connection in Settings."); return null; }
                         response.EnsureSuccessStatusCode(); json=await response.Content.ReadAsStringAsync();
                     }
-                    var asset=Parse(json); if(asset==null || asset.Version<=Current) { status("v"+Current.ToString(3)+" - up to date with GitHub releases"); return null; }
+                    var asset=Parse(json); if(asset==null || asset.Version<=(verifyPublicRelease?new Version(0,0,0,0):Current)) { status("v"+Current.ToString(3)+" - up to date with GitHub releases"); return null; }
                     if(asset.Size<=0 || asset.Size>200*1024*1024) throw new InvalidDataException("Installer size is outside the supported limit.");
                     string dir=Path.Combine(Preferences.Root,"Updates",asset.Version.ToString(3)); Directory.CreateDirectory(dir);
                     string destination=Path.Combine(dir,asset.Name),partial=destination+".download";
@@ -117,6 +122,9 @@ namespace PowerPal {
                     } finally { if(File.Exists(partial)) File.Delete(partial); }
                 }
             } catch(Exception ex) { status("Update check failed (recording continues): "+ex.Message); return null; }
+        }
+        static async Task<HttpResponseMessage> Latest(HttpClient client,string token) {
+            using(var request=Request(new Uri(Api+"releases/latest"),token,false)) return await client.SendAsync(request);
         }
         static HttpRequestMessage Request(Uri uri,string token,bool binary) {
             var request=new HttpRequestMessage(HttpMethod.Get,uri);
