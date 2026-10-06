@@ -98,7 +98,7 @@ namespace PowerPal {
                     Check(Children(form).OfType<ProcessGrid>().Single().RowCount==1,"Filter no longer matches extended characters"); filter.Clear();
                     if(dpi==96) {
                         var widths=Children(form).OfType<ProcessGrid>().Single().Columns.Cast<DataGridViewColumn>().Select(c=>c.Width).ToArray();
-                        if(firstWidths==null) firstWidths=widths; else Check(widths.Zip(firstWidths,(a,b)=>Math.Abs(a-b)<=1).All(v=>v),"Column widths drift after DPI/theme round trip");
+                        if(firstWidths==null) firstWidths=widths; else Check(widths.Zip(firstWidths,(a,b)=>Math.Abs(a-b)<=1).All(v=>v),"Column widths drift after DPI/theme round trip: "+string.Join(",",firstWidths)+" -> "+string.Join(",",widths)+"; canvas parent "+form.ClientSize);
                     }
                     form.SaveCanvas(Path.Combine(folder,"dashboard-"+theme+"-"+dpi+".png"));
                     settings.SaveCanvas(Path.Combine(folder,"settings-"+theme+"-"+dpi+".png"));

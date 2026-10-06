@@ -35,7 +35,7 @@ namespace PowerPal {
         readonly ListBox eventList=new ListBox();
         readonly TextBox search=new TextBox();
         readonly Panel searchFrame=new Panel();
-        int columnDpi;
+        int columnDpi,columnAreaWidth;
         readonly ToolTip eventTip=new ToolTip();
         readonly ActivityTrends trends=new ActivityTrends();
         string selectedProcess,sortColumn="share";
@@ -109,17 +109,21 @@ namespace PowerPal {
             foreach(DataGridViewRow row in processGrid.Rows) row.Height=rowHeight;
             int available=Math.Max(headerHeight+rowHeight,Content.Height-Px(739));
             processGrid.SetBounds(Px(48),Px(665),Px(left-40),available);
-            if(columnDpi!=ContentDpi) {
-                // Fill sizing mutates FillWeight while minimum widths change. Reset as
-                // one batch so a trip through a larger scale cannot crush columns.
-                processGrid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.None;
+            if(columnDpi!=ContentDpi || columnAreaWidth!=processGrid.ClientSize.Width) {
+                // Native Fill sizing accumulates rounding/minimum-width adjustments
+                // across DPI and viewport changes. Allocate from current metrics.
                 int[] weights={24,14,14,12,12,11,13};
                 foreach(DataGridViewColumn column in processGrid.Columns) {
                     var header=(SortHeaderCell)column.HeaderCell; header.Scale=d;
                     column.MinimumWidth=Math.Max(Px(column.Name=="name"?110:48),UiText.Measure(processGrid,column.HeaderText,UiFont(12,FontStyle.Bold)).Width+Px(36));
-                    column.FillWeight=weights[column.Index];
                 }
-                processGrid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill; columnDpi=ContentDpi;
+                int extra=Math.Max(0,processGrid.ClientSize.Width-SystemInformation.VerticalScrollBarWidth-processGrid.Columns.Cast<DataGridViewColumn>().Sum(c=>c.MinimumWidth));
+                int allocated=0,cumulative=0;
+                foreach(DataGridViewColumn column in processGrid.Columns) {
+                    cumulative+=weights[column.Index]; int next=(int)Math.Round(extra*cumulative/100.0);
+                    column.Width=column.MinimumWidth+next-allocated; allocated=next;
+                }
+                columnDpi=ContentDpi; columnAreaWidth=processGrid.ClientSize.Width;
             }
             int horizontal=processGrid.Controls.OfType<HScrollBar>().Any(b=>b.Visible)?SystemInformation.HorizontalScrollBarHeight:0;
             processGrid.Height=headerHeight+Math.Max(1,(available-headerHeight-horizontal)/rowHeight)*rowHeight+horizontal;
@@ -131,7 +135,7 @@ namespace PowerPal {
         }
         void ConfigureProcessGrid() {
             processGrid.ReadOnly=true; processGrid.AllowUserToAddRows=false; processGrid.AllowUserToDeleteRows=false; processGrid.AllowUserToResizeRows=false; processGrid.RowHeadersVisible=false; processGrid.MultiSelect=false;
-            processGrid.SelectionMode=DataGridViewSelectionMode.FullRowSelect; processGrid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill; processGrid.BackgroundColor=Palette.Card; processGrid.BorderStyle=BorderStyle.None; processGrid.GridColor=Palette.Line;
+            processGrid.SelectionMode=DataGridViewSelectionMode.FullRowSelect; processGrid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.None; processGrid.BackgroundColor=Palette.Card; processGrid.BorderStyle=BorderStyle.None; processGrid.GridColor=Palette.Line;
             processGrid.EnableHeadersVisualStyles=false; processGrid.ColumnHeadersDefaultCellStyle.BackColor=Palette.Bg; processGrid.ColumnHeadersDefaultCellStyle.ForeColor=Palette.Muted; processGrid.ColumnHeadersDefaultCellStyle.SelectionBackColor=Palette.Bg; processGrid.ColumnHeadersDefaultCellStyle.SelectionForeColor=Palette.Text; processGrid.ColumnHeadersDefaultCellStyle.WrapMode=DataGridViewTriState.False; processGrid.ColumnHeadersHeight=30; processGrid.RowTemplate.Height=28;
             processGrid.DefaultCellStyle.BackColor=Palette.Card; processGrid.DefaultCellStyle.ForeColor=Palette.Text; processGrid.DefaultCellStyle.SelectionBackColor=Palette.Selection; processGrid.DefaultCellStyle.SelectionForeColor=Palette.Text; processGrid.CellBorderStyle=DataGridViewCellBorderStyle.SingleHorizontal;
             foreach(var col in new[]{new[]{"name","App","24"},new[]{"share","Load %","14"},new[]{"watts","GPU W~","14"},new[]{"cpu","CPU %","12"},new[]{"gpu","GPU %","12"},new[]{"memory","MB","11"},new[]{"io","I/O MB/s","13"}}) {
