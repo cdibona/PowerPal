@@ -36,6 +36,8 @@ namespace PowerPal {
         readonly ActivityTrends trends=new ActivityTrends();
         string selectedProcess,sortColumn="share";
         bool descending=true,rebuilding;
+        FormWindowState restoreState=FormWindowState.Normal;
+        SettingsDialog activeSettings;
         List<Sample> current=new List<Sample>(), rows=new List<Sample>();
         List<Consumer> consumers=new List<Consumer>();
         string recording="Starting recorder...", activity="Warming up process counters...", updates="Checking release channel...";
@@ -44,9 +46,8 @@ namespace PowerPal {
         int hours=24, loadGeneration;
         bool recordingError,updateBusy;
         readonly Button[] ranges;
-        readonly Button export,settings,update,capture;
-        string capturedApp,captureStatus;
-        public event Action<string> CaptureRequested;
+        readonly Button export,settings,update;
+        int appLimit=20;
         public event Action SettingsRequested,UpdateRequested,ThemeRequested;
         public event Action HiddenToTray;
         public Dashboard(History h,ActivityHistory a=null,PowerEventLog events=null) {
@@ -62,10 +63,6 @@ namespace PowerPal {
             exportMenu.Items.Add("App activity history",null,delegate { Export(true); }).Enabled=activityHistory!=null;
             export=MakeButton("Export CSV",delegate { exportMenu.Show(export,new Point(0,export.Height)); }); settings=MakeButton("Settings",delegate { if(SettingsRequested!=null) SettingsRequested(); });
             update=MakeButton("Check updates",delegate { if(!updateBusy && UpdateRequested!=null) UpdateRequested(); });
-            capture=MakeButton("Capture session",delegate { if(CaptureRequested!=null) CaptureRequested(selectedProcess); });
-            eventTip.SetToolTip(capture,"Select a game or app, then capture its power estimates every 2 seconds. Recording continues in the tray.");
-            exportMenu.Items.Add("Open session captures",null,delegate { string folder=Path.Combine(Preferences.Root,"Captures"); Directory.CreateDirectory(folder); System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute=true }); });
-            Content.Controls.Add(capture);
             Content.Controls.AddRange(ranges); Content.Controls.AddRange(new Control[]{export,settings,update});
             ConfigureProcessGrid();
             search.BackColor=Palette.Bg; search.ForeColor=Palette.Text; search.BorderStyle=BorderStyle.FixedSingle; search.AccessibleName="Filter processes by name"; search.TextChanged+=delegate { RebuildProcesses(); };
@@ -74,8 +71,8 @@ namespace PowerPal {
             eventList.SelectedIndexChanged+=delegate { var entry=eventList.SelectedItem as PowerEvent; eventTip.SetToolTip(eventList,entry==null?"":entry.Detail); };
             Content.Controls.AddRange(new Control[]{processGrid,eventList,search});
             FormClosing += delegate(object sender,FormClosingEventArgs e) { if(e.CloseReason==CloseReason.UserClosing) { e.Cancel=true; HideToTray(); } };
-            Resize += delegate { if(WindowState==FormWindowState.Minimized) HideToTray(); PositionButtons(); Content.Invalidate(); };
-            VisibleChanged += delegate { if(Visible) RefreshHistory(); };
+            Resize += delegate { if(WindowState==FormWindowState.Minimized) { HideToTray(); return; } restoreState=WindowState; PositionButtons(); Content.Invalidate(); };
+            VisibleChanged += delegate { if(Visible) { RebuildProcesses(); RefreshHistory(); } };
             ContentLayout+=PositionButtons; ApplyTheme(); InitializeContent(new Size(1180,900),new Size(1080,850));
         }
         void ApplyTheme() {
@@ -93,7 +90,6 @@ namespace PowerPal {
         void PositionButtons() {
             if(ranges==null || export==null) return; float d=ScaleFactor; int width=(int)(Content.ClientSize.Width/d);
             for(int i=0;i<ranges.Length;i++) { ranges[i].SetBounds((int)((28+i*94)*d),(int)(262*d),(int)(86*d),(int)(32*d)); ranges[i].BackColor=hours==(i==0?1:i==1?24:168)?Palette.Selection:Palette.Card; }
-            capture.SetBounds(Px(width-590),Px(28),Px(164),Px(34));
             export.SetBounds((int)((width-414)*d),(int)(28*d),(int)(120*d),(int)(34*d));
             update.SetBounds((int)((width-284)*d),(int)(28*d),(int)(144*d),(int)(34*d));
             settings.SetBounds((int)((width-130)*d),(int)(28*d),(int)(102*d),(int)(34*d));
@@ -143,7 +139,13 @@ namespace PowerPal {
                 e.Graphics.DrawString(entry.Detail,muted,sub,new RectangleF(e.Bounds.X+3,e.Bounds.Y+26*d,e.Bounds.Width-10,23*d),format);
             }
         }
-        public void Open() { Show(); WindowState=FormWindowState.Normal; Activate(); }
+        public DialogResult OpenSettings(Preferences preferences,Action<bool> applyStartup=null) {
+            if(activeSettings!=null) { activeSettings.Activate(); return DialogResult.None; }
+            Open(); using(var dialog=new SettingsDialog(preferences,applyStartup)) {
+                activeSettings=dialog; try { return dialog.ShowDialog(this); } finally { activeSettings=null; }
+            }
+        }
+        public void Open() { if(WindowState==FormWindowState.Minimized) WindowState=restoreState; if(!Visible) Show(); Activate(); }
         void HideToTray() { Hide(); if(HiddenToTray!=null) HiddenToTray(); }
         void SetRange(int value) { hours=value; PositionButtons(); RefreshHistory(); }
         DateTime Since() { return DateTime.UtcNow.AddHours(-hours); }
@@ -152,8 +154,7 @@ namespace PowerPal {
             if(error==null) { lastSaved=DateTime.Now; recording="RECORDING  /  every 10 seconds"; } else recording=error;
             Content.Invalidate(); if(Visible) RefreshHistory();
         }
-        public void UpdateActivity(List<Consumer> items,int skipped) { consumers=items; trends.Observe(DateTime.UtcNow,items); activity=items.Count+" app groups / live 2s / log 10s"+(skipped>0 ? " / "+skipped+" inaccessible" : ""); RebuildProcesses(); }
-        public void UpdateCapture(string app,string status) { capturedApp=app; captureStatus=status; capture.Text=app==null?"Capture session":"Stop capture"; Content.Invalidate(); }
+        public void UpdateActivity(List<Consumer> items,int skipped,int limit=20) { appLimit=limit; consumers=items; trends.Observe(DateTime.UtcNow,items); activity=items.Count+" app groups / live 2s / auto-log top "+appLimit+" every 10s"+(skipped>0 ? " / "+skipped+" inaccessible" : ""); if(Visible) RebuildProcesses(); }
         public void UpdateActivityLog(DateTime? saved,string error) { activitySaved=saved; activityLogError=error; Content.Invalidate(); }
         public void SetUpdateBusy(bool busy) { updateBusy=busy; update.Text=busy?(updates.StartsWith("Downloading")?"Downloading...":"Checking..."):"Check updates"; update.BackColor=busy?Palette.Selection:Palette.Card; update.ForeColor=busy?Palette.Mint:Palette.Text; update.Cursor=busy?Cursors.WaitCursor:Cursors.Hand; Content.Invalidate(); }
         public void UpdateRelease(string text) { updates=text; if(updateBusy) SetUpdateBusy(true); eventTip.SetToolTip(update,text); Content.Invalidate(); }
@@ -201,14 +202,14 @@ namespace PowerPal {
             Round(g,new RectangleF(28,594,left,panelHeight),Palette.Card);
             TextAt(g,"Power users",48,610,15,Palette.Text,true);
             TextAt(g,"Filter",left-205,615,9,Palette.Muted,false,48);
-            TextAt(g,"Estimates from CPU + GPU activity; includes shared system overhead.",48,639,9,Palette.Muted,false,left-40);
+            TextAt(g,"Auto-log top "+appLimit+" every 10s. Power is a CPU + GPU approximation.",48,639,9,Palette.Muted,false,left-40);
             Round(g,new RectangleF(rx,594,right,panelHeight),Palette.Card);
             TextAt(g,"Power & battery events",rx+20,610,15,Palette.Text,true);
             TextAt(g,eventList.Items.Count==0?"Waiting for the first event...":"Newest first / scroll for earlier events",rx+20,634,9,Palette.Muted,false,right-40);
             bool activityStale=activitySaved.HasValue && (DateTime.UtcNow-activitySaved.Value).TotalSeconds>25;
             string logState=activityLogError??(activitySaved.HasValue ? "App log saved "+activitySaved.Value.ToLocalTime().ToString("HH:mm:ss")+(activityStale?" (delayed)":"") : "App log warming up");
             TextAt(g,logState,w-350,h-47,8,activityLogError!=null||activityStale?Palette.Amber:Palette.Mint,false,322);
-            TextAt(g,capturedApp!=null?"CAPTURING "+capturedApp+" / every 2s / continues in tray":captureStatus??activity,28,h-47,8,capturedApp!=null?Palette.Amber:Palette.Muted,false,w-410); TextAt(g,"v"+ReleaseUpdater.Current.ToString(3)+" / appearance: "+Theme.Mode+" / close or minimize to keep recording",28,h-26,8,Palette.Muted,false,w-56);
+            TextAt(g,activity,28,h-47,8,Palette.Muted,false,w-410); TextAt(g,"v"+ReleaseUpdater.Current.ToString(3)+" / appearance: "+Theme.Mode+" / close or minimize to keep recording",28,h-26,8,Palette.Muted,false,w-56);
         }
         void DrawDeepDive(Graphics g,RectangleF rect) {
             TextAt(g,selectedProcess??"App resource detail",rect.X,rect.Y,15,Palette.Text,true,rect.Width);

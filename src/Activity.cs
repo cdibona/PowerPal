@@ -27,6 +27,7 @@ namespace PowerPal {
         public int Inaccessible { get; private set; }
         public double IntervalSeconds { get; private set; }
         internal static double CpuPercent(double deltaMs, double elapsed, int processors) { return elapsed<=0 || deltaMs<0 ? 0 : Math.Min(100,deltaMs/(elapsed*1000*Math.Max(1,processors))*100); }
+        internal static List<Consumer> Rank(IEnumerable<Consumer> apps) { return apps.OrderByDescending(c=>Math.Max(0,c.Cpu)+Math.Max(0,c.Gpu??0)).ThenByDescending(c=>c.MemoryMb).ToList(); }
         public List<Consumer> Read() {
             double now=clock.Elapsed.TotalSeconds, elapsed=now-last; last=now; IntervalSeconds=elapsed;
             var gpuRead=gpu.Read(); GpuAvailable=gpuRead.Available;

@@ -15,7 +15,7 @@ jobs:
       - name: Choose version
         shell: pwsh
         run: |
-          $version = '0.2.2'
+          $version = '0.2.3'
           if ($env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME.TrimStart('v') }
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Release tags must be vMAJOR.MINOR.PATCH' }
           "POWERPAL_VERSION=$version" >> $env:GITHUB_ENV
@@ -26,6 +26,10 @@ jobs:
           $process = Start-Process "./bin/v$env:POWERPAL_VERSION/PowerPal.exe" -ArgumentList '--self-test' -PassThru -Wait
           Get-Content "./bin/v$env:POWERPAL_VERSION/test-result.txt"
           if ($process.ExitCode -ne 0) { throw 'Tests failed' }
+          $windowTest = Join-Path $env:RUNNER_TEMP 'PowerPal-window-tests'
+          $process = Start-Process "./bin/v$env:POWERPAL_VERSION/PowerPal.exe" -ArgumentList @('--window-test', $windowTest) -WindowStyle Hidden -PassThru -Wait
+          Get-Content "$windowTest/window-result.txt"
+          if ($process.ExitCode -ne 0) { throw 'Window/Settings regression failed' }
       - name: Package
         shell: pwsh
         run: ./package.ps1 -Version $env:POWERPAL_VERSION

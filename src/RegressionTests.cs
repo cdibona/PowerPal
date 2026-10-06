@@ -61,8 +61,15 @@ namespace PowerPal {
             Check(PowerFrame.From(new[]{new Sample { Source="Battery",Watts=-10 },new Sample { Source="Battery",Watts=null }}).DrawWatts==null,"Missing battery must not produce partial system watts");
             estimateApps[0].Gpu=null; PowerEstimates.Apply(estimateApps,frame,estimateTime); Check(estimateApps.All(c=>c.PowerShare==null),"Do not fabricate estimates without complete GPU readings");
             estimateApps[0].Gpu=80; PowerEstimates.Apply(estimateApps,frame,estimateTime);
-            var capture=new SessionCapture(Path.Combine(folder,"captures")); capture.Start("Game"); capture.Append(estimateTime,estimateApps,frame); capture.Append(estimateTime.AddSeconds(2),new List<Consumer>(),frame); string capturePath=capture.Stop();
-            var captured=File.ReadAllLines(capturePath); Check(captured.Length==3 && captured[1].Contains("true,10,80,90,45,-50") && captured[2].Contains("false,,,,,-50"),"Gameplay capture persists estimates and missing-process gaps");
+            var ranked=ActivityMonitor.Rank(new[]{new Consumer { Name="CPU worker",Cpu=40,Gpu=0 },new Consumer { Name="GPU game",Cpu=5,Gpu=90 },new Consumer { Name="Missing GPU",Cpu=20,Gpu=null }});
+            Check(ranked[0].Name=="GPU game" && ranked[1].Name=="CPU worker","Automatic logging includes GPU-heavy apps and ranks partial readings by known activity");
+            var prefs=new Preferences { StorageFolder=Path.Combine(folder,"preferences"),DisplayScalePercent=125,TopAppCount=7 };
+            prefs.Save(); var reloaded=Preferences.LoadFrom(prefs.StorageFolder);
+            Check(reloaded.DisplayScalePercent==125 && reloaded.AppLimit==7 && reloaded.AutoUpdate,"Scaling and top-app count survive restart");
+            Check(DisplayScaling.ResolveDpi(192,125)==120 && DisplayScaling.ResolveDpi(120,0)==120 && DisplayScaling.ResolveDpi(192,0)==192,"Manual scaling replaces Windows scale; follow mode uses monitor DPI");
+            Check(DisplayScaling.Normalize(-1)==0 && DisplayScaling.Normalize(999)==0 && new Preferences { TopAppCount=999 }.AppLimit==100,"Invalid preferences stay bounded");
+            File.WriteAllText(Path.Combine(prefs.StorageFolder,"settings.json"),"{\"AutoUpdate\":false,\"ThemeMode\":\"Dark\"}");
+            reloaded=Preferences.LoadFrom(prefs.StorageFolder); Check(!reloaded.AutoUpdate && reloaded.ThemeMode=="Dark" && reloaded.DisplayScalePercent==0 && reloaded.AppLimit==20,"Old preferences retain defaults for new controls");
             File.WriteAllLines(Path.Combine(logs.Folder,now.ToString("yyyy-MM-dd")+".csv"),new[]{ActivityHistory.LegacyHeader,now.ToString("o")+",1,Legacy,1,2,3,2,0"});
             Check(logs.Lines(now.AddSeconds(-1)).Any(l=>l.Contains(",Legacy,") && l.EndsWith(",,,,,,,")),"Legacy activity export gains empty new columns without rewriting history");
             var trends=new ActivityTrends(); trends.Observe(now.AddMinutes(-6),consumers); trends.Observe(now,consumers); Check(trends.Get(consumers[0].Name).Count==1,"Bounded five-minute resource histories");

@@ -32,24 +32,4 @@ namespace PowerPal {
             }
         }
     }
-    internal sealed class SessionCapture {
-        public const string Header="utc,process,present,cpu_percent,gpu_percent,estimated_power_share_percent,estimated_app_watts,battery_watts,battery_sample_utc,power_source,model";
-        public readonly string Folder;
-        public string App { get; private set; }
-        public string PathName { get; private set; }
-        public bool Active { get { return App!=null; } }
-        public SessionCapture(string folder) { Folder=folder; }
-        public void Start(string app) {
-            if(Active || string.IsNullOrWhiteSpace(app)) throw new InvalidOperationException("Select an app before starting a capture.");
-            Directory.CreateDirectory(Folder);
-            string path=Path.Combine(Folder,DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss",CultureInfo.InvariantCulture)+"_"+Guid.NewGuid().ToString("N").Substring(0,6)+".csv");
-            File.WriteAllText(path,Header+Environment.NewLine); PathName=path; App=app;
-        }
-        public void Append(DateTime now,IList<Consumer> apps,PowerFrame power) {
-            if(!Active) return;
-            var app=apps.FirstOrDefault(c=>string.Equals(c.Name,App,StringComparison.OrdinalIgnoreCase)); bool fresh=power!=null && power.Fresh(now);
-            File.AppendAllText(PathName,string.Join(",",new[]{now.ToString("o"),ActivityHistory.Quote(App),app==null?"false":"true",Sample.Number(app==null?null:(double?)app.Cpu),Sample.Number(app==null?null:app.Gpu),Sample.Number(app==null?null:app.PowerShare),Sample.Number(app==null?null:app.EstimatedWatts),Sample.Number(fresh?power.BatteryWatts:null),fresh?power.Time.ToString("o"):"",ActivityHistory.Quote(fresh?power.Source:"Unknown"),PowerEstimates.Model})+Environment.NewLine);
-        }
-        public string Stop() { string path=PathName; App=null; return path; }
-    }
 }

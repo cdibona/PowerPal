@@ -18,9 +18,17 @@ namespace PowerPal {
     internal sealed class Preferences {
         public bool AutoUpdate=true;
         public string ThemeMode="Auto";
+        public int DisplayScalePercent=0;
+        public int TopAppCount=20;
+        internal string StorageFolder;
+        [ScriptIgnore] public int AppLimit { get { return Math.Max(1,Math.Min(100,TopAppCount)); } }
         public static string Root { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PowerPal"); } }
-        public static Preferences Load() { try { return new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(Path.Combine(Root,"settings.json"))) ?? new Preferences(); } catch { return new Preferences(); } }
-        public void Save() { Directory.CreateDirectory(Root); File.WriteAllText(Path.Combine(Root,"settings.json"),new JavaScriptSerializer().Serialize(this)); }
+        public static Preferences Load() { return LoadFrom(Root); }
+        internal static Preferences LoadFrom(string folder) {
+            Preferences loaded; try { loaded=new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(Path.Combine(folder,"settings.json"))) ?? new Preferences(); } catch { loaded=new Preferences(); }
+            loaded.StorageFolder=folder; loaded.DisplayScalePercent=DisplayScaling.Normalize(loaded.DisplayScalePercent); loaded.TopAppCount=loaded.AppLimit; return loaded;
+        }
+        public void Save() { string folder=StorageFolder??Root; Directory.CreateDirectory(folder); File.WriteAllText(Path.Combine(folder,"settings.json"),new JavaScriptSerializer().Serialize(this)); }
         public static bool Startup {
             get { using(var key=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) return key!=null && key.GetValue("PowerPal")!=null; }
             set { using(var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) { if(value) key.SetValue("PowerPal","\""+Application.ExecutablePath+"\" --background"); else key.DeleteValue("PowerPal",false); } }
@@ -106,7 +114,8 @@ namespace PowerPal {
         }
     }
     internal sealed class SettingsDialog : ScaledForm {
-        public SettingsDialog(Preferences preferences) {
+        public SettingsDialog(Preferences preferences,Action<bool> applyStartup=null) {
+            FitContentOnScaleChange=true; ShowInTaskbar=false;
             Text="PowerPal settings - v"+ReleaseUpdater.Current.ToString(3); StartPosition=FormStartPosition.CenterParent; FormBorderStyle=FormBorderStyle.FixedDialog; MaximizeBox=false; MinimizeBox=false;
             var startup=new CheckBox { Text="Start recording in the tray when I sign in",Checked=Preferences.Startup,Bounds=new System.Drawing.Rectangle(22,22,510,26) };
             var automatic=new CheckBox { Text="Automatically install updates from GitHub Releases",Checked=preferences.AutoUpdate,Bounds=new System.Drawing.Rectangle(22,62,510,26) };
@@ -117,12 +126,27 @@ namespace PowerPal {
             theme.SelectedIndex=Theme.Mode=="Light"?1:Theme.Mode=="Dark"?2:0;
             theme.SelectedIndexChanged+=delegate { preferences.ThemeMode=theme.SelectedIndex==1?"Light":theme.SelectedIndex==2?"Dark":"Auto"; Theme.Set(preferences.ThemeMode); try { preferences.Save(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Could not save appearance"); } };
             var hint=new Label { Text="You can also click the dashboard lightning bolt to cycle themes.",Bounds=new System.Drawing.Rectangle(22,218,510,38) };
-            var save=new Button { Text="Save settings",Bounds=new System.Drawing.Rectangle(370,276,165,34),FlatStyle=FlatStyle.Flat };
-            save.Click+=delegate { try { Preferences.Startup=startup.Checked; preferences.AutoUpdate=automatic.Checked; preferences.Save(); DialogResult=DialogResult.OK; Close(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Could not save settings"); } };
-            var controls=new Control[]{startup,automatic,info,themeLabel,theme,hint,save}; Content.Controls.AddRange(controls); AcceptButton=save;
+            var scaleLabel=new Label { Text="Display scaling",Bounds=new System.Drawing.Rectangle(22,269,120,26) };
+            var scale=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList,Bounds=new System.Drawing.Rectangle(160,266,372,30),AccessibleName="Display scaling" };
+            scale.Items.AddRange(DisplayScaling.Options.Select(p=>(object)DisplayScaling.Label(p)).ToArray());
+            scale.SelectedIndex=Array.IndexOf(DisplayScaling.Options,DisplayScaling.Normalize(preferences.DisplayScalePercent));
+            scale.SelectedIndexChanged+=delegate {
+                int chosen=DisplayScaling.Options[scale.SelectedIndex],prior=preferences.DisplayScalePercent;
+                if(chosen==prior) return;
+                preferences.DisplayScalePercent=chosen;
+                try { preferences.Save(); DisplayScaling.Set(chosen); }
+                catch(Exception ex) { preferences.DisplayScalePercent=prior; scale.SelectedIndex=Array.IndexOf(DisplayScaling.Options,prior); MessageBox.Show(this,ex.Message,"Could not save display scaling"); }
+            };
+            var scaleHint=new Label { Text="Applies immediately to PowerPal. Manual scales replace Windows scaling.\nThe dashboard stays maximized; smaller windows scroll when needed.",Bounds=new System.Drawing.Rectangle(22,310,510,48) };
+            var appLabel=new Label { Text="Automatically log top apps",Bounds=new System.Drawing.Rectangle(22,377,300,26) };
+            var appLimit=new NumericUpDown { Minimum=1,Maximum=100,Value=preferences.AppLimit,Bounds=new System.Drawing.Rectangle(370,372,162,30),AccessibleName="Number of top apps to record" };
+            var appHint=new Label { Text="Ranked by CPU + GPU activity. Estimates are saved every 10 seconds,\nincluding while PowerPal is in the tray. No manual capture is needed.",Bounds=new System.Drawing.Rectangle(22,414,510,48) };
+            var save=new Button { Text="Save settings",Bounds=new System.Drawing.Rectangle(370,478,165,34),FlatStyle=FlatStyle.Flat };
+            save.Click+=delegate { try { if(applyStartup!=null) applyStartup(startup.Checked); else Preferences.Startup=startup.Checked; preferences.AutoUpdate=automatic.Checked; preferences.TopAppCount=(int)appLimit.Value; preferences.Save(); DialogResult=DialogResult.OK; Close(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Could not save settings"); } };
+            var controls=new Control[]{startup,automatic,info,themeLabel,theme,hint,scaleLabel,scale,scaleHint,appLabel,appLimit,appHint,save}; Content.Controls.AddRange(controls); AcceptButton=save;
             var bounds=controls.Select(c=>c.Bounds).ToArray();
             ContentLayout+=delegate { for(int i=0;i<controls.Length;i++) { var r=bounds[i]; controls[i].SetBounds(Px(r.X),Px(r.Y),Px(r.Width),Px(r.Height)); } };
-            Theme.Changed+=ApplyTheme; ApplyTheme(); InitializeContent(new System.Drawing.Size(560,335),new System.Drawing.Size(560,335));
+            Theme.Changed+=ApplyTheme; ApplyTheme(); InitializeContent(new System.Drawing.Size(560,540),new System.Drawing.Size(560,540));
         }
         void ApplyTheme() { Theme.PaintControls(this); Content.Invalidate(true); }
         protected override void Dispose(bool disposing) { if(disposing) Theme.Changed-=ApplyTheme; base.Dispose(disposing); }

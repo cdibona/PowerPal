@@ -25,7 +25,7 @@ namespace PowerPal {
                 form.UpdateLive(new List<Sample>{samples.Last()},null); form.SeedPreview(apps);
                 for(int j=0;j<20;j++) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
                 foreach(string theme in new[]{"Light","Dark"}) foreach(int dpi in new[]{96,120,144,192}) {
-                    Theme.Set(theme); form.SetContentDpi(dpi); settings.SetContentDpi(dpi); form.ClientSize=new Size(1180*dpi/96,900*dpi/96); settings.ClientSize=new Size(560*dpi/96,335*dpi/96); Application.DoEvents();
+                    Theme.Set(theme); form.SetContentDpi(dpi); settings.SetContentDpi(dpi); form.ClientSize=new Size(1180*dpi/96,900*dpi/96); settings.ClientSize=new Size(560*dpi/96,540*dpi/96); Application.DoEvents();
                     if(!form.ContentFits || !settings.ContentFits) throw new Exception("Controls overflow at "+dpi+" DPI");
                     form.SaveCanvas(Path.Combine(folder,"dashboard-"+theme+"-"+dpi+".png"));
                     settings.SaveCanvas(Path.Combine(folder,"settings-"+theme+"-"+dpi+".png"));
