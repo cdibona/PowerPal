@@ -54,7 +54,7 @@ namespace PowerPal {
             DateTime estimateTime=DateTime.UtcNow;
             var frame=PowerFrame.From(new[]{new Sample { Time=estimateTime,Source="Battery",Watts=-50 }});
             PowerEstimates.Apply(estimateApps,frame,estimateTime);
-            Check(estimateApps[0].PowerShare==90 && estimateApps[0].EstimatedWatts==45 && estimateApps.Sum(c=>c.EstimatedWatts)==50,"CPU/GPU allocation conserves measured discharge");
+            Check(estimateApps[0].PowerShare==90 && estimateApps.All(c=>c.EstimatedWatts==null),"Activity ranking does not fabricate whole-app battery watts");
             PowerEstimates.Apply(estimateApps,frame,estimateTime.AddSeconds(16)); Check(estimateApps[0].EstimatedWatts==null && estimateApps[0].PowerShare==90,"Stale battery watts suppressed; activity share stays available");
             var ac=PowerFrame.From(new[]{new Sample { Time=estimateTime,Source="External power",Watts=40 }});
             PowerEstimates.Apply(estimateApps,ac,estimateTime); Check(estimateApps.All(c=>c.EstimatedWatts==null),"Charging is not system power consumption");
@@ -63,15 +63,16 @@ namespace PowerPal {
             estimateApps[0].Gpu=80; PowerEstimates.Apply(estimateApps,frame,estimateTime);
             var ranked=ActivityMonitor.Rank(new[]{new Consumer { Name="CPU worker",Cpu=40,Gpu=0 },new Consumer { Name="GPU game",Cpu=5,Gpu=90 },new Consumer { Name="Missing GPU",Cpu=20,Gpu=null }});
             Check(ranked[0].Name=="GPU game" && ranked[1].Name=="CPU worker","Automatic logging includes GPU-heavy apps and ranks partial readings by known activity");
-            var prefs=new Preferences { StorageFolder=Path.Combine(folder,"preferences"),DisplayScalePercent=125,TopAppCount=7 };
+            var prefs=new Preferences { StorageFolder=Path.Combine(folder,"preferences"),DisplayScalePercent=125,TopAppCount=7,GpuSensors=false };
             prefs.Save(); var reloaded=Preferences.LoadFrom(prefs.StorageFolder);
-            Check(reloaded.DisplayScalePercent==125 && reloaded.AppLimit==7 && reloaded.AutoUpdate,"Scaling and top-app count survive restart");
+            Check(reloaded.DisplayScalePercent==125 && reloaded.AppLimit==7 && reloaded.AutoUpdate && !reloaded.GpuSensors,"Scaling and top-app count survive restart");
             Check(DisplayScaling.ResolveDpi(192,125)==120 && DisplayScaling.ResolveDpi(120,0)==120 && DisplayScaling.ResolveDpi(192,0)==192,"Manual scaling replaces Windows scale; follow mode uses monitor DPI");
             Check(DisplayScaling.Normalize(-1)==0 && DisplayScaling.Normalize(999)==0 && new Preferences { TopAppCount=999 }.AppLimit==100,"Invalid preferences stay bounded");
             File.WriteAllText(Path.Combine(prefs.StorageFolder,"settings.json"),"{\"AutoUpdate\":false,\"ThemeMode\":\"Dark\"}");
-            reloaded=Preferences.LoadFrom(prefs.StorageFolder); Check(!reloaded.AutoUpdate && reloaded.ThemeMode=="Dark" && reloaded.DisplayScalePercent==0 && reloaded.AppLimit==20,"Old preferences retain defaults for new controls");
+            reloaded=Preferences.LoadFrom(prefs.StorageFolder); Check(!reloaded.AutoUpdate && reloaded.ThemeMode=="Dark" && reloaded.DisplayScalePercent==0 && reloaded.AppLimit==20 && reloaded.GpuSensors,"Old preferences retain defaults for new controls");
             File.WriteAllLines(Path.Combine(logs.Folder,now.ToString("yyyy-MM-dd")+".csv"),new[]{ActivityHistory.LegacyHeader,now.ToString("o")+",1,Legacy,1,2,3,2,0"});
-            Check(logs.Lines(now.AddSeconds(-1)).Any(l=>l.Contains(",Legacy,") && l.EndsWith(",,,,,,,")),"Legacy activity export gains empty new columns without rewriting history");
+            Check(logs.Lines(now.AddSeconds(-1)).Any(l=>l.Contains(",Legacy,") && l.EndsWith(new string(',',11))),"Legacy activity export gains empty new columns without rewriting history");
+            SensorTests.Run(folder);
             var trends=new ActivityTrends(); trends.Observe(now.AddMinutes(-6),consumers); trends.Observe(now,consumers); Check(trends.Get(consumers[0].Name).Count==1,"Bounded five-minute resource histories");
         }
     }

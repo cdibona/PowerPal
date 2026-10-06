@@ -43,7 +43,7 @@ namespace PowerPal {
                     Check(form.WindowState==FormWindowState.Normal && form.Bounds==bounds,"Normal window bounds changed during tray reopen");
                     report.Add("PASS: normal window size/position survives Settings, all scale choices and tray reopen.");
                     var loaded=Preferences.LoadFrom(preferences.StorageFolder);
-                    Check(loaded.DisplayScalePercent==0 && loaded.AppLimit==7,"Settings save did not persist scale/top-app selections");
+                    Check(loaded.DisplayScalePercent==0 && loaded.AppLimit==7 && !loaded.GpuSensors,"Settings save did not persist scale/top-app selections");
                     report.Add("PASS: actual Settings controls save scale and top-app limit to isolated preferences.");
                 }
                 File.WriteAllLines(Path.Combine(folder,"window-result.txt"),report);
@@ -64,6 +64,7 @@ namespace PowerPal {
                         if(stage==2) {
                             driver.Stop();
                             Descendants(current).OfType<NumericUpDown>().Single().Value=7;
+                            Descendants(current).OfType<CheckBox>().Single(c=>c.AccessibleName=="GPU power sensors").Checked=false;
                             Descendants(current).OfType<Button>().Single(b=>b.Text=="Save settings").PerformClick(); return;
                         }
                         if(stage==0) {

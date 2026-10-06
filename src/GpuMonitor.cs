@@ -9,6 +9,7 @@ namespace PowerPal {
         public bool Available;
         public readonly Dictionary<int,Dictionary<string,double>> Engines=new Dictionary<int,Dictionary<string,double>>();
         public readonly HashSet<int> Invalid=new HashSet<int>();
+        public readonly HashSet<string> InvalidAdapters=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string,double> ForProcess(int pid) {
             if(!Available || Invalid.Contains(pid)) return null;
             Dictionary<string,double> result;
@@ -59,19 +60,23 @@ namespace PowerPal {
         internal static void Add(GpuSnapshot result,string instance,double value,uint status) {
             var match=Regex.Match(instance??"",@"^pid_(\d+)_(luid_.+?)(?:#\d+)?$"); int pid;
             if(!match.Success || !int.TryParse(match.Groups[1].Value,out pid)) return;
-            if(status>1 || double.IsNaN(value) || double.IsInfinity(value)) { result.Invalid.Add(pid); return; }
+            if(status>1 || double.IsNaN(value) || double.IsInfinity(value)) { result.Invalid.Add(pid); string id=GpuAttributionWindow.AdapterId(match.Groups[2].Value); if(id!=null) result.InvalidAdapters.Add(id); return; }
             Dictionary<string,double> engines;
             if(!result.Engines.TryGetValue(pid,out engines)) { engines=new Dictionary<string,double>(); result.Engines[pid]=engines; }
             string engine=match.Groups[2].Value; double prior; engines.TryGetValue(engine,out prior);
             engines[engine]=Math.Min(100,prior+Math.Max(0,value));
         }
         internal static double? Busiest(IEnumerable<Dictionary<string,double>> processes) {
+            var totals=Combine(processes);
+            return totals==null?(double?)null:Math.Min(100,totals.Values.DefaultIfEmpty(0).Max());
+        }
+        internal static Dictionary<string,double> Combine(IEnumerable<Dictionary<string,double>> processes) {
             var totals=new Dictionary<string,double>();
             foreach(var engines in processes) {
                 if(engines==null) return null;
                 foreach(var e in engines) { double value; totals.TryGetValue(e.Key,out value); totals[e.Key]=value+e.Value; }
             }
-            return Math.Min(100,totals.Values.DefaultIfEmpty(0).Max());
+            return totals;
         }
         void Reset() { if(query!=IntPtr.Zero) PdhCloseQuery(query); query=counter=IntPtr.Zero; primed=false; }
         public void Dispose() { lock(gate) { disposed=true; Reset(); } }

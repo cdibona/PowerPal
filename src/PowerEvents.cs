@@ -63,7 +63,7 @@ namespace PowerPal {
         public void Observe(DateTime time,IEnumerable<Consumer> consumers) {
             foreach(var c in consumers) {
                 List<ActivityPoint> points; if(!tracks.TryGetValue(c.Name,out points)) { points=new List<ActivityPoint>(); tracks[c.Name]=points; }
-                points.Add(new ActivityPoint { Time=time,Cpu=c.Cpu,Memory=c.MemoryMb,Io=c.DiskMb,Gpu=c.Gpu,Watts=c.EstimatedWatts,Share=c.PowerShare });
+                points.Add(new ActivityPoint { Time=time,Cpu=c.Cpu,Memory=c.MemoryMb,Io=c.DiskMb,Gpu=c.Gpu,Watts=c.GpuWatts,Share=c.PowerShare });
             }
             foreach(var key in tracks.Keys.ToList()) { tracks[key].RemoveAll(p=>p.Time<time.AddMinutes(-5)); if(tracks[key].Count==0) tracks.Remove(key); }
         }

@@ -28,6 +28,8 @@ namespace PowerPal {
         readonly History history;
         readonly ActivityHistory activityHistory;
         readonly PowerEventLog eventLog;
+        readonly SensorHistory sensorHistory;
+        GpuPowerReport sensors=new GpuPowerReport();
         readonly ContextMenuStrip exportMenu=new ContextMenuStrip();
         readonly DataGridView processGrid=new DataGridView();
         readonly ListBox eventList=new ListBox();
@@ -50,8 +52,8 @@ namespace PowerPal {
         int appLimit=20;
         public event Action SettingsRequested,UpdateRequested,ThemeRequested;
         public event Action HiddenToTray;
-        public Dashboard(History h,ActivityHistory a=null,PowerEventLog events=null) {
-            history=h; activityHistory=a; eventLog=events; Text="PowerPal v"+ReleaseUpdater.Current.ToString(3)+" - your power, in focus"; StartPosition=FormStartPosition.CenterScreen;
+        public Dashboard(History h,ActivityHistory a=null,PowerEventLog events=null,SensorHistory sensorLog=null) {
+            history=h; activityHistory=a; eventLog=events; sensorHistory=sensorLog; Text="PowerPal v"+ReleaseUpdater.Current.ToString(3)+" - your power, in focus"; StartPosition=FormStartPosition.CenterScreen;
             BackColor=Palette.Bg; ForeColor=Palette.Text; DoubleBuffered=true; Content.BackColor=Palette.Bg; Content.Paint+=PaintDashboard;
             Icon=Brand.MakeIcon(Palette.Mint);
             Content.MouseClick+=delegate(object sender,MouseEventArgs e) { if(new Rectangle(Px(24),Px(24),Px(44),Px(48)).Contains(e.Location) && ThemeRequested!=null) ThemeRequested(); };
@@ -61,6 +63,7 @@ namespace PowerPal {
             ranges=new[] { MakeButton("1 hour",delegate { SetRange(1); }),MakeButton("24 hours",delegate { SetRange(24); }),MakeButton("7 days",delegate { SetRange(168); }) };
             exportMenu.Items.Add("Battery history",null,delegate { Export(false); });
             exportMenu.Items.Add("App activity history",null,delegate { Export(true); }).Enabled=activityHistory!=null;
+            exportMenu.Items.Add("GPU sensor history",null,delegate { ExportSensors(); }).Enabled=sensorHistory!=null;
             export=MakeButton("Export CSV",delegate { exportMenu.Show(export,new Point(0,export.Height)); }); settings=MakeButton("Settings",delegate { if(SettingsRequested!=null) SettingsRequested(); });
             update=MakeButton("Check updates",delegate { if(!updateBusy && UpdateRequested!=null) UpdateRequested(); });
             Content.Controls.AddRange(ranges); Content.Controls.AddRange(new Control[]{export,settings,update});
@@ -98,17 +101,18 @@ namespace PowerPal {
             search.SetBounds((int)((left-156)*d),(int)(612*d),(int)(164*d),(int)(26*d));
             eventList.SetBounds((int)((rx+20)*d),(int)(650*d),(int)((right-40)*d),Math.Max(115,Content.ClientSize.Height-(int)(724*d))); eventList.ItemHeight=(int)(54*d);
             processGrid.ColumnHeadersHeight=Px(30); processGrid.RowTemplate.Height=Px(28); foreach(DataGridViewRow row in processGrid.Rows) row.Height=Px(28);
+            foreach(DataGridViewColumn column in processGrid.Columns) column.MinimumWidth=Px(column.Name=="name"?110:column.Name=="memory"?50:column.Name=="io"?80:68);
         }
         void ConfigureProcessGrid() {
             processGrid.ReadOnly=true; processGrid.AllowUserToAddRows=false; processGrid.AllowUserToDeleteRows=false; processGrid.AllowUserToResizeRows=false; processGrid.RowHeadersVisible=false; processGrid.MultiSelect=false;
             processGrid.SelectionMode=DataGridViewSelectionMode.FullRowSelect; processGrid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill; processGrid.BackgroundColor=Palette.Card; processGrid.BorderStyle=BorderStyle.None; processGrid.GridColor=Palette.Line;
             processGrid.EnableHeadersVisualStyles=false; processGrid.ColumnHeadersDefaultCellStyle.BackColor=Palette.Bg; processGrid.ColumnHeadersDefaultCellStyle.ForeColor=Palette.Muted; processGrid.ColumnHeadersDefaultCellStyle.SelectionBackColor=Palette.Bg; processGrid.ColumnHeadersDefaultCellStyle.SelectionForeColor=Palette.Text; processGrid.ColumnHeadersDefaultCellStyle.WrapMode=DataGridViewTriState.False; processGrid.ColumnHeadersHeight=30; processGrid.RowTemplate.Height=28;
             processGrid.DefaultCellStyle.BackColor=Palette.Card; processGrid.DefaultCellStyle.ForeColor=Palette.Text; processGrid.DefaultCellStyle.SelectionBackColor=Palette.Selection; processGrid.DefaultCellStyle.SelectionForeColor=Palette.Text; processGrid.CellBorderStyle=DataGridViewCellBorderStyle.SingleHorizontal;
-            foreach(var col in new[]{new[]{"name","App","24"},new[]{"share","Est. %","14"},new[]{"watts","Est. W","14"},new[]{"cpu","CPU %","12"},new[]{"gpu","GPU %","12"},new[]{"memory","MB","11"},new[]{"io","I/O MB/s","13"}}) {
+            foreach(var col in new[]{new[]{"name","App","24"},new[]{"share","Load %","14"},new[]{"watts","GPU W~","14"},new[]{"cpu","CPU %","12"},new[]{"gpu","GPU %","12"},new[]{"memory","MB","11"},new[]{"io","I/O MB/s","13"}}) {
                 int i=processGrid.Columns.Add(col[0],col[1]); processGrid.Columns[i].FillWeight=int.Parse(col[2]); processGrid.Columns[i].SortMode=DataGridViewColumnSortMode.Programmatic;
             }
-            processGrid.Columns["share"].ToolTipText="Estimated power share: CPU + GPU activity, normalized across readable apps. Equal weights; not calibrated power. Includes allocated system overhead.";
-            processGrid.Columns["watts"].ToolTipText="Estimated share times measured whole-system battery discharge. Unavailable on external power, stale readings or missing GPU counters.";
+            processGrid.Columns["share"].ToolTipText="Activity share: CPU + GPU activity normalized across readable apps. This is NOT a share of system power.";
+            processGrid.Columns["watts"].ToolTipText="Estimated GPU watts only, based on matched NVIDIA board power and activity over the sensor interval. Works on AC or battery. Excludes CPU, display and other components. -- means no current estimate.";
             processGrid.Columns["gpu"].ToolTipText="Busiest GPU engine for this app group (WDDM). Utilization, not watts.";
             processGrid.ColumnHeaderMouseClick+=delegate(object sender,DataGridViewCellMouseEventArgs e) { string key=processGrid.Columns[e.ColumnIndex].Name; descending=key==sortColumn?!descending:key!="name"; sortColumn=key; RebuildProcesses(); };
             processGrid.SelectionChanged+=delegate { if(!rebuilding && processGrid.SelectedRows.Count>0) { selectedProcess=(string)processGrid.SelectedRows[0].Tag; Content.Invalidate(); } };
@@ -117,13 +121,13 @@ namespace PowerPal {
         void RebuildProcesses() {
             if(IsDisposed) return;
             var filtered=consumers.Where(c=>c.Name.IndexOf(search.Text,StringComparison.OrdinalIgnoreCase)>=0);
-            Func<Consumer,IComparable> key=c=>sortColumn=="name"?(IComparable)c.Name:sortColumn=="share"?c.PowerShare??-1:sortColumn=="watts"?c.EstimatedWatts??-1:sortColumn=="gpu"?c.Gpu??-1:sortColumn=="memory"?c.MemoryMb:sortColumn=="io"?c.DiskMb??-1:sortColumn=="count"?c.Processes:c.Cpu;
+            Func<Consumer,IComparable> key=c=>sortColumn=="name"?(IComparable)c.Name:sortColumn=="share"?c.PowerShare??-1:sortColumn=="watts"?c.GpuWatts??-1:sortColumn=="gpu"?c.Gpu??-1:sortColumn=="memory"?c.MemoryMb:sortColumn=="io"?c.DiskMb??-1:sortColumn=="count"?c.Processes:c.Cpu;
             var sorted=(descending?filtered.OrderByDescending(key):filtered.OrderBy(key)).ToList();
             if(selectedProcess==null && sorted.Count>0) selectedProcess=sorted[0].Name;
             int scroll=processGrid.FirstDisplayedScrollingRowIndex; rebuilding=true;
             try {
                 processGrid.Rows.Clear();
-                foreach(var c in sorted) { int i=processGrid.Rows.Add(c.Name,c.PowerShare.HasValue?c.PowerShare.Value.ToString("0.0"):"--",c.EstimatedWatts.HasValue?c.EstimatedWatts.Value.ToString("0.0"):"--",c.Cpu.ToString("0.0"),c.Gpu.HasValue?c.Gpu.Value.ToString("0.0"):"--",c.MemoryMb.ToString("0"),c.DiskMb.HasValue?c.DiskMb.Value.ToString("0.0"):"--"); processGrid.Rows[i].Tag=c.Name; }
+                foreach(var c in sorted) { int i=processGrid.Rows.Add(c.Name,c.PowerShare.HasValue?c.PowerShare.Value.ToString("0.0"):"--",c.GpuWatts.HasValue?c.GpuWatts.Value.ToString("0.0"):"--",c.Cpu.ToString("0.0"),c.Gpu.HasValue?c.Gpu.Value.ToString("0.0"):"--",c.MemoryMb.ToString("0"),c.DiskMb.HasValue?c.DiskMb.Value.ToString("0.0"):"--"); processGrid.Rows[i].Tag=c.Name; }
                 processGrid.ClearSelection(); foreach(DataGridViewRow row in processGrid.Rows) if((string)row.Tag==selectedProcess) row.Selected=true;
                 if(scroll>=0 && processGrid.Rows.Count>scroll) processGrid.FirstDisplayedScrollingRowIndex=scroll;
                 foreach(DataGridViewColumn col in processGrid.Columns) col.HeaderCell.SortGlyphDirection=col.Name==sortColumn?(descending?SortOrder.Descending:SortOrder.Ascending):SortOrder.None;
@@ -155,12 +159,13 @@ namespace PowerPal {
             Content.Invalidate(); if(Visible) RefreshHistory();
         }
         public void UpdateActivity(List<Consumer> items,int skipped,int limit=20) { appLimit=limit; consumers=items; trends.Observe(DateTime.UtcNow,items); activity=items.Count+" app groups / live 2s / auto-log top "+appLimit+" every 10s"+(skipped>0 ? " / "+skipped+" inaccessible" : ""); if(Visible) RebuildProcesses(); }
+        public void UpdateSensors(GpuPowerReport report) { sensors=report; Content.Invalidate(); }
         public void UpdateActivityLog(DateTime? saved,string error) { activitySaved=saved; activityLogError=error; Content.Invalidate(); }
         public void SetUpdateBusy(bool busy) { updateBusy=busy; update.Text=busy?(updates.StartsWith("Downloading")?"Downloading...":"Checking..."):"Check updates"; update.BackColor=busy?Palette.Selection:Palette.Card; update.ForeColor=busy?Palette.Mint:Palette.Text; update.Cursor=busy?Cursors.WaitCursor:Cursors.Hand; Content.Invalidate(); }
         public void UpdateRelease(string text) { updates=text; if(updateBusy) SetUpdateBusy(true); eventTip.SetToolTip(update,text); Content.Invalidate(); }
         public void RefreshStatus() { Content.Invalidate(); }
         internal void SeedPreview(List<Consumer> items) {
-            for(int i=0;i<100;i++) trends.Observe(DateTime.UtcNow.AddSeconds((i-100)*2),items.Select(c=>new Consumer { Name=c.Name,Cpu=Math.Max(0,c.Cpu*(0.65+Math.Sin(i*0.25)*0.35)),MemoryMb=c.MemoryMb*(0.85+i/1000.0),Gpu=c.Gpu,PowerShare=c.PowerShare,EstimatedWatts=c.EstimatedWatts,DiskMb=c.DiskMb.HasValue?(double?)(c.DiskMb.Value*(0.6+Math.Cos(i*0.3)*0.4)):null }));
+            for(int i=0;i<100;i++) trends.Observe(DateTime.UtcNow.AddSeconds((i-100)*2),items.Select(c=>new Consumer { Name=c.Name,Cpu=Math.Max(0,c.Cpu*(0.65+Math.Sin(i*0.25)*0.35)),MemoryMb=c.MemoryMb*(0.85+i/1000.0),Gpu=c.Gpu,PowerShare=c.PowerShare,GpuWatts=c.GpuWatts,DiskMb=c.DiskMb.HasValue?(double?)(c.DiskMb.Value*(0.6+Math.Cos(i*0.3)*0.4)):null }));
             UpdateActivity(items,3); activity="Preview data / select an app to inspect CPU, GPU and estimated power"; activitySaved=DateTime.UtcNow; updates="v"+ReleaseUpdater.Current.ToString(3)+" / automatic updates enabled";
             foreach(var entry in new[]{new PowerEvent { Time=DateTime.UtcNow,Title="Charging started",Detail="External power / 70% / 15.20 V / +22.0 W" },new PowerEvent { Time=DateTime.UtcNow.AddSeconds(-1),Title="External power connected",Detail="Battery-1 / 70% / 15.20 V" },new PowerEvent { Time=DateTime.UtcNow.AddMinutes(-4),Title="Battery level 69%",Detail="Running on battery / discharging / -12.0 W" },new PowerEvent { Time=DateTime.UtcNow.AddMinutes(-8),Title="Recording started",Detail="Battery and app activity logs started" }}) eventList.Items.Add(entry);
         }
@@ -190,7 +195,8 @@ namespace PowerPal {
             string reserve=has && all.All(s=>s.Wh.HasValue) ? all.Sum(s=>s.Wh.Value).ToString("0.0")+" Wh remaining" : "Capacity not reported";
             Card(g,52+2*cw,112,cw,126,"CHARGE LEFT",percent,reserve,Palette.Purple);
             Card(g,64+3*cw,112,cw,126,"BATTERY VOLTAGE",has && all.Count==1 && first.Volts.HasValue?first.Volts.Value.ToString("0.00")+" V":all.Count>1?"Multiple packs":"Unavailable","Charger input voltage: unavailable",Palette.Mint);
-            TextAt(g,"App watts are estimates on battery. External power: shares only; wall draw unavailable.",330,270,9,Palette.Muted,false,w-360);
+            TextAt(g,sensors.Summary(DateTime.UtcNow),330,255,11,Palette.Mint,true,w-360);
+            TextAt(g,sensors.Detail(DateTime.UtcNow),330,278,8,Palette.Muted,false,w-360);
             float left=(w-72)*0.64f,right=w-left-72;
             Round(g,new RectangleF(28,310,left,268),Palette.Card);
             TextAt(g,"Your power story",48,326,15,Palette.Text,true); TextAt(g,"Battery %",48,355,9,Palette.Mint,false); TextAt(g,"Watts  (+ charge / - draw)",160,355,9,Palette.Amber,false);
@@ -202,7 +208,7 @@ namespace PowerPal {
             Round(g,new RectangleF(28,594,left,panelHeight),Palette.Card);
             TextAt(g,"Power users",48,610,15,Palette.Text,true);
             TextAt(g,"Filter",left-205,615,9,Palette.Muted,false,48);
-            TextAt(g,"Auto-log top "+appLimit+" every 10s. Power is a CPU + GPU approximation.",48,639,9,Palette.Muted,false,left-40);
+            TextAt(g,"Auto-log top "+appLimit+" every 10s. GPU W~ is estimated GPU power only.",48,639,9,Palette.Muted,false,left-40);
             Round(g,new RectangleF(rx,594,right,panelHeight),Palette.Card);
             TextAt(g,"Power & battery events",rx+20,610,15,Palette.Text,true);
             TextAt(g,eventList.Items.Count==0?"Waiting for the first event...":"Newest first / scroll for earlier events",rx+20,634,9,Palette.Muted,false,right-40);
@@ -215,10 +221,10 @@ namespace PowerPal {
             TextAt(g,selectedProcess??"App resource detail",rect.X,rect.Y,15,Palette.Text,true,rect.Width);
             var selected=consumers.FirstOrDefault(c=>c.Name==selectedProcess); var points=trends.Get(selectedProcess);
             TextAt(g,selected==null?"Select an app below":selected.Processes+" process(es) / "+selected.MemoryMb.ToString("0")+" MB / I/O "+(selected.DiskMb.HasValue?selected.DiskMb.Value.ToString("0.0")+" MB/s":"--"),rect.X,rect.Y+28,9,Palette.Muted,false,rect.Width);
-            DrawResource(g,rect.X,rect.Y+57,rect.Width,"Est. power",selected==null || !selected.EstimatedWatts.HasValue?"-- W":selected.EstimatedWatts.Value.ToString("0.0")+" W",points,p=>p.Watts,Palette.Amber,null);
+            DrawResource(g,rect.X,rect.Y+57,rect.Width,"GPU watts~",selected==null || !selected.GpuWatts.HasValue?"-- W":selected.GpuWatts.Value.ToString("0.0")+" W",points,p=>p.Watts,Palette.Amber,null);
             DrawResource(g,rect.X,rect.Y+111,rect.Width,"CPU",selected==null?"--":selected.Cpu.ToString("0.0")+"%",points,p=>p.Cpu,Palette.Mint,100);
             DrawResource(g,rect.X,rect.Y+165,rect.Width,"GPU",selected==null || !selected.Gpu.HasValue?"--":selected.Gpu.Value.ToString("0.0")+"%",points,p=>p.Gpu,Palette.Purple,100);
-            TextAt(g,"5 min / CPU + GPU allocation, not measured app watts",rect.X,rect.Y+218,8,Palette.Muted,false,rect.Width);
+            TextAt(g,selected!=null && selected.GpuEnergyWh.HasValue?"GPU energy~ "+selected.GpuEnergyWh.Value.ToString("0.000")+" Wh observed this run":"5 min / GPU power estimated / CPU watts unavailable",rect.X,rect.Y+218,8,Palette.Muted,false,rect.Width);
         }
         static void DrawResource(Graphics g,float x,float y,float width,string title,string value,List<ActivityPoint> points,Func<ActivityPoint,double?> get,Color color,double? fixedMax) {
             TextAt(g,title,x,y,9,Palette.Muted,false,100); TextAt(g,value,x,y+16,11,color,true,100);
@@ -261,6 +267,17 @@ namespace PowerPal {
         }
         static void Round(Graphics g,RectangleF r,Color color) {
             const float d=18; using(var p=new GraphicsPath()) { p.AddArc(r.X,r.Y,d,d,180,90); p.AddArc(r.Right-d,r.Y,d,d,270,90); p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90); p.AddArc(r.X,r.Bottom-d,d,d,90,90); p.CloseFigure(); using(var b=new SolidBrush(color)) g.FillPath(b,p); }
+        }
+        void ExportSensors() {
+            if(sensorHistory==null) return;
+            using(var dialog=new SaveFileDialog { Filter="CSV files|*.csv",FileName="PowerPal-gpu-sensors.csv" }) {
+                if(dialog.ShowDialog()!=DialogResult.OK) return;
+                try {
+                    string target=Path.GetFullPath(dialog.FileName);
+                    if(target.StartsWith(Path.GetFullPath(Preferences.Root)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)) throw new IOException("Choose an export location outside PowerPal's data folders.");
+                    File.WriteAllLines(target,sensorHistory.Lines(Since()));
+                } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Export failed"); }
+            }
         }
         void Export(bool processes) {
             using(var dialog=new SaveFileDialog { Filter="CSV files|*.csv",FileName=processes?"PowerPal-app-activity.csv":"PowerPal-battery-history.csv" }) {

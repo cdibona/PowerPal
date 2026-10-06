@@ -20,6 +20,7 @@ namespace PowerPal {
         public string ThemeMode="Auto";
         public int DisplayScalePercent=0;
         public int TopAppCount=20;
+        public bool GpuSensors=true;
         internal string StorageFolder;
         [ScriptIgnore] public int AppLimit { get { return Math.Max(1,Math.Min(100,TopAppCount)); } }
         public static string Root { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PowerPal"); } }
@@ -140,13 +141,15 @@ namespace PowerPal {
             var scaleHint=new Label { Text="Applies immediately to PowerPal. Manual scales replace Windows scaling.\nThe dashboard stays maximized; smaller windows scroll when needed.",Bounds=new System.Drawing.Rectangle(22,310,510,48) };
             var appLabel=new Label { Text="Automatically log top apps",Bounds=new System.Drawing.Rectangle(22,377,300,26) };
             var appLimit=new NumericUpDown { Minimum=1,Maximum=100,Value=preferences.AppLimit,Bounds=new System.Drawing.Rectangle(370,372,162,30),AccessibleName="Number of top apps to record" };
-            var appHint=new Label { Text="Ranked by CPU + GPU activity. Estimates are saved every 10 seconds,\nincluding while PowerPal is in the tray. No manual capture is needed.",Bounds=new System.Drawing.Rectangle(22,414,510,48) };
-            var save=new Button { Text="Save settings",Bounds=new System.Drawing.Rectangle(370,478,165,34),FlatStyle=FlatStyle.Flat };
-            save.Click+=delegate { try { if(applyStartup!=null) applyStartup(startup.Checked); else Preferences.Startup=startup.Checked; preferences.AutoUpdate=automatic.Checked; preferences.TopAppCount=(int)appLimit.Value; preferences.Save(); DialogResult=DialogResult.OK; Close(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Could not save settings"); } };
-            var controls=new Control[]{startup,automatic,info,themeLabel,theme,hint,scaleLabel,scale,scaleHint,appLabel,appLimit,appHint,save}; Content.Controls.AddRange(controls); AcceptButton=save;
+            var appHint=new Label { Text="Ranked by CPU + GPU activity. History saves every 10 seconds,\nincluding while PowerPal is in the tray.",Bounds=new System.Drawing.Rectangle(22,414,510,48) };
+            var sensors=new CheckBox { Text="Read GPU power sensors while the GPU is active",Checked=preferences.GpuSensors,AccessibleName="GPU power sensors",Bounds=new System.Drawing.Rectangle(22,473,510,26) };
+            var sensorHint=new Label { Text="NVIDIA driver required. Polls about every 5 seconds.\nApp GPU watts are estimates; CPU watts are unavailable.",Bounds=new System.Drawing.Rectangle(22,506,510,48) };
+            var save=new Button { Text="Save settings",Bounds=new System.Drawing.Rectangle(370,567,165,34),FlatStyle=FlatStyle.Flat };
+            save.Click+=delegate { try { if(applyStartup!=null) applyStartup(startup.Checked); else Preferences.Startup=startup.Checked; preferences.AutoUpdate=automatic.Checked; preferences.TopAppCount=(int)appLimit.Value; preferences.GpuSensors=sensors.Checked; preferences.Save(); DialogResult=DialogResult.OK; Close(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Could not save settings"); } };
+            var controls=new Control[]{startup,automatic,info,themeLabel,theme,hint,scaleLabel,scale,scaleHint,appLabel,appLimit,appHint,sensors,sensorHint,save}; Content.Controls.AddRange(controls); AcceptButton=save;
             var bounds=controls.Select(c=>c.Bounds).ToArray();
             ContentLayout+=delegate { for(int i=0;i<controls.Length;i++) { var r=bounds[i]; controls[i].SetBounds(Px(r.X),Px(r.Y),Px(r.Width),Px(r.Height)); } };
-            Theme.Changed+=ApplyTheme; ApplyTheme(); InitializeContent(new System.Drawing.Size(560,540),new System.Drawing.Size(560,540));
+            Theme.Changed+=ApplyTheme; ApplyTheme(); InitializeContent(new System.Drawing.Size(560,625),new System.Drawing.Size(560,625));
         }
         void ApplyTheme() { Theme.PaintControls(this); Content.Invalidate(true); }
         protected override void Dispose(bool disposing) { if(disposing) Theme.Changed-=ApplyTheme; base.Dispose(disposing); }

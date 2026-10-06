@@ -1,12 +1,13 @@
-## PowerPal 0.2.3
+## PowerPal 0.3.0
 
-- Fix Settings restoring a maximized dashboard to normal size. Opening Settings and returning from the tray now preserve window state and position.
-- Keep Settings within the desktop working area, including after changing scale.
-- Add **Display scaling**: follow Windows (default), or choose 1x, 1.25x, 1.5x, 1.75x, 2x, 2.25x, 2.5x, or 3x. Manual scales replace Windows scaling and are saved immediately.
-- Remove the manual Capture button. Automatically record the busiest CPU/GPU app groups, with a configurable limit of 1-100 in Settings (default 20).
-- Reduce tray polling to every five seconds and skip rebuilding the hidden app table; the open dashboard refreshes every two seconds. History saves about every ten seconds.
-- Add regression tests for modal Settings, maximized/normal window bounds, every scale preset, tray reopening, saved preferences, and automatic recording limits.
+- Read real NVIDIA GPU board power and cumulative energy through the existing driver, on AC or battery. No added driver or administrator requirement.
+- Show measured GPU watts and observed energy, estimated per-app **GPU W~** and GPU Wh this run, and unassigned GPU power. CPU watts remain unavailable.
+- Match sensors to Windows GPU adapters so integrated-GPU activity is not charged to the discrete GPU. Ambiguous mappings stay unavailable.
+- Sample sensors about every five seconds, pause/release NVML when the NVIDIA GPU is idle, and back off after failures. Disable sensors in Settings if desired.
+- Add GPU sensor CSV history/export and sensor fields to automatic top-app history. Keep all earlier history compatible.
+- Rename the activity ranking to **Load %** and retire the old allocation of whole-battery draw to apps. GPU watts are estimates of the GPU component, not total application wattage.
+- Test energy counter resets, sleep gaps, stale data, adapter separation, unassigned power, history compatibility, and Settings/scaling regressions.
 
-App watts remain a clearly labeled CPU/GPU approximation; this release does not claim per-app hardware wattage. Existing history, preferences, and older capture CSVs are preserved. No reinstall or GitHub login is needed: Check updates, then minimize to apply.
+GPU energy totals cover observed intervals in the current PowerPal run; gaps and first samples are excluded. Sensor support depends on the installed NVIDIA driver/GPU. AMD/Intel GPU power and CPU package power are not implemented. All app resource monitoring remains available without GPU sensors.
 
-Download **PowerPal-Setup-win-x64.exe** or the versioned installer; they are identical. SHA-256 sidecars are included. The installer remains unsigned.
+Use **Check updates**, then minimize to apply. Installers and SHA-256 sidecars are below; no reinstall or GitHub login is needed.

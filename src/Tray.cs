@@ -33,6 +33,8 @@ namespace PowerPal {
         readonly NotifyIcon icon; readonly Icon good=Brand.MakeIcon(Color.FromArgb(108,239,190)),bad=Brand.MakeIcon(Color.FromArgb(255,204,112));
         readonly Dashboard window; readonly History history; readonly ActivityHistory activityHistory; readonly PowerEventLog eventLog; readonly Preferences preferences=Preferences.Load(); readonly ActivityMonitor activity=new ActivityMonitor();
         PowerFrame power=new PowerFrame();
+        readonly GpuPowerMonitor gpuPower=new GpuPowerMonitor();
+        readonly SensorHistory sensorHistory;
         readonly ToolStripMenuItem recordingItem=new ToolStripMenuItem("Recorder starting...") { Enabled=false };
         readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer { Interval=2000 };
         bool busy,exiting,updating,notified; DateTime nextSample=DateTime.MinValue,nextUpdate=DateTime.MinValue,nextActivitySample=DateTime.MinValue; string pendingInstaller,activityError,batteryError; DateTime? activitySaved;
@@ -41,7 +43,8 @@ namespace PowerPal {
             history=new History(testFolder??Path.Combine(Preferences.Root,"History"));
             activityHistory=new ActivityHistory(testFolder==null?Path.Combine(Preferences.Root,"Activity"):Path.Combine(testFolder,"Activity"));
             eventLog=new PowerEventLog(testFolder==null?Path.Combine(Preferences.Root,"Events"):Path.Combine(testFolder,"Events"));
-            window=new Dashboard(history,activityHistory,eventLog);
+            sensorHistory=new SensorHistory(testFolder==null?Path.Combine(Preferences.Root,"Sensors"):Path.Combine(testFolder,"Sensors"));
+            window=new Dashboard(history,activityHistory,eventLog,sensorHistory);
             var menu=new ContextMenuStrip { Renderer=new ThemeRenderer() }; menu.Items.Add(new ToolStripMenuItem("PowerPal v"+ReleaseUpdater.Current.ToString(3)) { Enabled=false }); menu.Items.Add(recordingItem); menu.Items.Add("Open PowerPal",null,delegate { window.Open(); }); menu.Items.Add("Check for updates",null,delegate { CheckUpdates(); });
             menu.Items.Add("Settings",null,delegate { Settings(); }); menu.Items.Add(new ToolStripSeparator()); menu.Items.Add("Exit and stop recording",null,delegate { ExitThread(); });
             icon=new NotifyIcon { Icon=good,Text="PowerPal - starting recorder",Visible=true,ContextMenuStrip=menu }; icon.MouseClick+=delegate(object sender,MouseEventArgs e) { if(e.Button==MouseButtons.Left) window.Open(); };
@@ -72,9 +75,14 @@ namespace PowerPal {
                 }
                 try {
                     var consumers=await Task.Run(()=>activity.Read()); if(exiting) return; PowerEstimates.Apply(consumers,power,DateTime.UtcNow);
+                    bool sensorsEnabled=preferences.GpuSensors;
+                    var sensors=await Task.Run(()=>gpuPower.Read(consumers,activity.GpuSnapshot,activity.IntervalSeconds,sensorsEnabled)); if(exiting) return;
+                    window.UpdateSensors(sensors);
+                    if(sensors.NewSample) await Task.Run(()=>sensorHistory.Append(sensors)); if(exiting) return;
                     consumers=ActivityMonitor.Rank(consumers);
                     window.UpdateActivity(consumers,activity.Inaccessible,preferences.AppLimit);
-                    if(DateTime.UtcNow>=nextActivitySample && consumers.Count>0) {
+                    // Coalesce sub-100ms timer jitter rather than skipping an entire five-second tray tick.
+                    if(DateTime.UtcNow.AddMilliseconds(100)>=nextActivitySample && consumers.Count>0) {
                         DateTime time=DateTime.UtcNow; nextActivitySample=time.AddSeconds(10);
                         bool saved=await Task.Run(()=>activityHistory.Append(time,consumers.Take(preferences.AppLimit).ToList(),activity.IntervalSeconds,activity.Inaccessible,power));
                         if(exiting) return; if(saved) activitySaved=time; activityError=null;
@@ -100,6 +108,6 @@ namespace PowerPal {
             try { Process.Start(new ProcessStartInfo(pendingInstaller,"/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /POWERPALUPDATE") { UseShellExecute=true }); pendingInstaller=null; ExitThread(); }
             catch(Exception ex) { pendingInstaller=null; window.UpdateRelease("Could not start update: "+ex.Message); }
         }
-        protected override void ExitThreadCore() { exiting=true; SystemEvents.UserPreferenceChanged-=SystemThemeChanged; timer.Stop(); timer.Dispose(); activity.Dispose(); try { eventLog.Add("Recording stopped","PowerPal exited; battery and app activity logging stopped."); } catch(IOException) { } catch(UnauthorizedAccessException) { } icon.Visible=false; icon.Dispose(); good.Dispose(); bad.Dispose(); window.Dispose(); base.ExitThreadCore(); }
+        protected override void ExitThreadCore() { exiting=true; SystemEvents.UserPreferenceChanged-=SystemThemeChanged; timer.Stop(); timer.Dispose(); activity.Dispose(); gpuPower.Dispose(); try { eventLog.Add("Recording stopped","PowerPal exited; battery and app activity logging stopped."); } catch(IOException) { } catch(UnauthorizedAccessException) { } icon.Visible=false; icon.Dispose(); good.Dispose(); bad.Dispose(); window.Dispose(); base.ExitThreadCore(); }
     }
 }

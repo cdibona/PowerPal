@@ -19,16 +19,16 @@ namespace PowerPal {
         public bool Fresh(DateTime now) { return Time<=now && (now-Time).TotalSeconds<=15; }
     }
     internal static class PowerEstimates {
-        public const string Model="cpu-plus-busiest-gpu-v1";
+        public const string Model="cpu-plus-gpu-activity-v2";
+        public const string GpuModel="nvml-engine-allocation-v1";
         public static void Apply(IList<Consumer> apps,PowerFrame power,DateTime now) {
             double total=apps.Sum(c=>Math.Max(0,c.Cpu)+Math.Max(0,c.Gpu??0));
             bool usable=apps.Count>0 && apps.All(c=>c.Gpu.HasValue) && total>=0.1;
             foreach(var app in apps) {
-                // This is a transparent allocation heuristic, not a calibrated meter.
-                // Equal CPU/GPU utilization weights distribute *all* battery draw,
-                // including shared system overhead, among readable app groups.
+                // An activity ranking, not a share of system power. Keep old CSV watt fields
+                // for compatibility, but do not allocate battery/display/fan draw to apps.
                 app.PowerShare=usable?(double?)(100*(Math.Max(0,app.Cpu)+Math.Max(0,app.Gpu.Value))/total):null;
-                app.EstimatedWatts=power!=null && power.Fresh(now) && power.DrawWatts.HasValue && app.PowerShare.HasValue ? power.DrawWatts*app.PowerShare/100 : null;
+                app.EstimatedWatts=null;
             }
         }
     }
