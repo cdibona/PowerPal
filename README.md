@@ -14,6 +14,8 @@ The installer offers recording at sign-in, enabled by default. Settings controls
 
 By default, PowerPal follows Windows display scaling for its current monitor. In **Settings > Display scaling**, choose **Follow system display scaling settings** or an absolute **1x, 1.25x, 1.5x, 1.75x, 2x, 2.25x, 2.5x, or 3x** scale. Changes apply immediately and are saved; manual scales replace Windows scaling rather than multiplying it. Settings preserves the dashboard's maximized state and normal window position. Minimize/close and tray reopen preserve the prior window state. Content scrolls when it cannot fit, and Settings stays within the desktop working area. Appearance defaults to **Auto**, following Windows' app light/dark setting. Choose Auto, Light, or Dark in Settings, or click the lightning bolt beside the PowerPal title to cycle **Auto → Light → Dark → Auto**. The choice is saved.
 
+Text fields, table rows and Settings descriptions reserve space using measured Windows font metrics. Sortable column headers show both up/down arrows, with the active direction highlighted. Column proportions stay stable after scale changes; event and process lists show whole rows where possible.
+
 ## Automatic power-user recording
 
 The dashboard shows source, net battery flow, charge, battery voltage, history charts, a sortable/filterable **Power users** table, a selected app's five-minute CPU/GPU/estimated GPU-watt graphs, and a persistent power/charging event log. The table includes CPU, GPU, memory, I/O, **Load %**, and **GPU W~**. Recording status and last-save times make background operation visible. Amber indicates a measurement or recording failure.
@@ -83,11 +85,11 @@ A bounded download, allowed-host check, and matching SHA-256/size must pass befo
 ## Build and release
 
 ```powershell
-./build.ps1 -Version 0.3.0
-./package.ps1 -Version 0.3.0 -Compiler 'C:/path/to/ISCC.exe'
+./build.ps1 -Version 0.3.1
+./package.ps1 -Version 0.3.1 -Compiler 'C:/path/to/ISCC.exe'
 ```
 
-Build uses the compiler shipped with Windows .NET Framework; no SDK download is needed. Packaging uses Inno Setup 6. Outputs include `bin/v0.3.0/PowerPal.exe` **and `PowerPal.exe.config`** (required for DPI support), versioned/stable installers in `dist`, and SHA-256 sidecars. The installer includes the config and MIT license.
+Build uses the compiler shipped with Windows .NET Framework; no SDK download is needed. Packaging uses Inno Setup 6. Outputs include `bin/v0.3.1/PowerPal.exe` **and `PowerPal.exe.config`** (required for DPI support), versioned/stable installers in `dist`, and SHA-256 sidecars. The installer includes the config and MIT license.
 
 GitHub Actions builds/tests on branches and PRs. Pushing a `vMAJOR.MINOR.PATCH` tag builds and publishes the installers. The tag supplies the version; prerelease tags are rejected. Review and merge source before tagging a production release.
 
@@ -96,7 +98,7 @@ GitHub Actions builds/tests on branches and PRs. Pushing a `vMAJOR.MINOR.PATCH` 
 - `--self-test`: battery units, missing values, CSV persistence/export and old-file compatibility, GPU engine aggregation and adapter matching, energy delta/reset/gap arithmetic, conservation of attributed/unassigned power, polling/idle/failure behavior, stale/missing-data suppression, automatic CPU/GPU ranking, scale preference persistence, theme selection, and updater digest/host validation. Result: `test-result.txt` beside the executable.
 - `--runtime-test C:/absolute/path/test-folder`: isolated 20-second test of automatic background logging with a configured top-three limit, startup visibility, open/minimize/close to tray. Add `--show` for installer-style startup. No update check or sign-in change.
 - `--window-test C:/absolute/path/test-folder`: opens real modal Settings from normal/maximized dashboards, changes every scale option, saves isolated preferences, and verifies window bounds, tray restoration, duplicate-dialog prevention, and top-app selection. Runs in CI.
-- `--dpi-test C:/absolute/path/test-folder`: confirms real PerMonitorV2 awareness, renders both themes at simulated 100/125/150/200% layout scales, checks control bounds and DPI round trips. Physical movement between differently scaled monitors still requires manual testing.
+- `--dpi-test C:/absolute/path/test-folder`: confirms real PerMonitorV2 awareness, checks startup with a 125% override, and renders both themes at 100/125/150/175/200/225/250/300% layout scales. Verifies native text fit, Settings overlap, filter text, row heights, column-width round trips, and both sort directions in all seven headers, including painted arrow pixels after live refresh. Runs in release CI. Physical movement between differently scaled monitors still requires manual testing.
 - `--sensor-probe C:/absolute/path/result.txt`: a bounded diagnostic with three direct NVIDIA samples followed by a 30-second automatic sampler/CPU-cost check. The diagnostic deliberately queries available NVIDIA sensors even when idle; normal recording uses activity gating.
 - `--activity-probe C:/absolute/path/result.txt`: checks real GPU/process counters and reports timings and current estimates.
 - `--probe C:/absolute/path/probe.csv`: one real battery sensor reading.

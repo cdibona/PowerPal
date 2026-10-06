@@ -13,7 +13,7 @@ namespace PowerPal {
         Size designSize,minimumContent;
         bool ready,layingOut,initialSizeApplied;
         protected bool FitContentOnScaleChange;
-        readonly Dictionary<int,Font> fonts=new Dictionary<int,Font>();
+        readonly Dictionary<string,Font> fonts=new Dictionary<string,Font>();
         protected float ScaleFactor { get; private set; }
         protected event Action ContentLayout;
         protected ScaledForm() {
@@ -27,6 +27,13 @@ namespace PowerPal {
             SetContentDpi(DisplayScaling.ResolveDpi(DeviceDpi,DisplayScaling.Percent)); FitToDisplay(true);
         }
         protected int Px(float logical) { return (int)Math.Round(logical*ScaleFactor); }
+        protected Font UiFont(float pixels,FontStyle style=FontStyle.Regular) {
+            string key=ContentDpi+":"+pixels.ToString(System.Globalization.CultureInfo.InvariantCulture)+":"+style;
+            Font font; if(!fonts.TryGetValue(key,out font)) { font=new Font("Segoe UI",pixels*ScaleFactor,style,GraphicsUnit.Pixel); fonts[key]=font; } return font;
+        }
+        protected void SetContentHeight(int pixels) {
+            minimumContent.Height=designSize.Height=(int)Math.Ceiling(pixels/ScaleFactor);
+        }
         protected override void OnHandleCreated(EventArgs e) {
             base.OnHandleCreated(e); Theme.PaintFrame(this);
             if(ready) { SetContentDpi(DisplayScaling.ResolveDpi(DeviceDpi,DisplayScaling.Percent)); FitToDisplay(!initialSizeApplied); initialSizeApplied=true; }
@@ -36,6 +43,9 @@ namespace PowerPal {
             // Disable framework scaling: it would multiply our explicit bounds twice.
             e.Cancel=true; base.OnDpiChanged(e);
             ApplyMonitorDpi(e.DeviceDpiNew,e.SuggestedRectangle);
+            // Native children receive their DPI notifications after the parent. Reapply
+            // explicit pixel fonts once they finish, including when a manual scale is set.
+            if(IsHandleCreated) BeginInvoke(new Action(delegate { if(!IsDisposed) SetContentDpi(DisplayScaling.ResolveDpi(DeviceDpi,DisplayScaling.Percent)); }));
         }
         internal void ApplyMonitorDpi(int dpi,Rectangle suggested) {
             SetContentDpi(DisplayScaling.ResolveDpi(dpi,DisplayScaling.Percent));
@@ -63,15 +73,20 @@ namespace PowerPal {
         }
         internal void SetContentDpi(int dpi) {
             ScaleFactor=Math.Max(96,dpi)/96f;
-            Font scaled; if(!fonts.TryGetValue(dpi,out scaled)) { scaled=new Font("Segoe UI",13*ScaleFactor,FontStyle.Regular,GraphicsUnit.Pixel); fonts[dpi]=scaled; }
-            Font=scaled;
+            Font=UiFont(13); SetNativeFonts(Content,Font);
             LayoutCanvas(); Content.Invalidate(true);
+        }
+        static void SetNativeFonts(Control parent,Font font) {
+            parent.Font=font;
+            foreach(Control child in parent.Controls) SetNativeFonts(child,font);
         }
         void LayoutCanvas() {
             if(!ready || layingOut) return; layingOut=true;
             try {
-                Content.Size=new Size(Math.Max(Px(minimumContent.Width),viewport.ClientSize.Width),Math.Max(Px(minimumContent.Height),viewport.ClientSize.Height));
-                if(ContentLayout!=null) ContentLayout();
+                for(int pass=0;pass<2;pass++) {
+                    Content.Size=new Size(Math.Max(Px(minimumContent.Width),viewport.ClientSize.Width),Math.Max(Px(minimumContent.Height),viewport.ClientSize.Height));
+                    if(ContentLayout!=null) ContentLayout();
+                }
                 Content.Invalidate();
             } finally { layingOut=false; }
         }

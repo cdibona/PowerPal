@@ -31,9 +31,11 @@ namespace PowerPal {
         readonly SensorHistory sensorHistory;
         GpuPowerReport sensors=new GpuPowerReport();
         readonly ContextMenuStrip exportMenu=new ContextMenuStrip();
-        readonly DataGridView processGrid=new DataGridView();
+        readonly ProcessGrid processGrid=new ProcessGrid();
         readonly ListBox eventList=new ListBox();
         readonly TextBox search=new TextBox();
+        readonly Panel searchFrame=new Panel();
+        int columnDpi;
         readonly ToolTip eventTip=new ToolTip();
         readonly ActivityTrends trends=new ActivityTrends();
         string selectedProcess,sortColumn="share";
@@ -68,11 +70,13 @@ namespace PowerPal {
             update=MakeButton("Check updates",delegate { if(!updateBusy && UpdateRequested!=null) UpdateRequested(); });
             Content.Controls.AddRange(ranges); Content.Controls.AddRange(new Control[]{export,settings,update});
             ConfigureProcessGrid();
-            search.BackColor=Palette.Bg; search.ForeColor=Palette.Text; search.BorderStyle=BorderStyle.FixedSingle; search.AccessibleName="Filter processes by name"; search.TextChanged+=delegate { RebuildProcesses(); };
-            eventList.BackColor=Palette.Card; eventList.ForeColor=Palette.Text; eventList.BorderStyle=BorderStyle.None; eventList.DrawMode=DrawMode.OwnerDrawFixed; eventList.IntegralHeight=false; eventList.AccessibleName="Power and battery event log";
+            search.BackColor=Palette.Bg; search.ForeColor=Palette.Text; search.BorderStyle=BorderStyle.None; search.AutoSize=false; search.AccessibleName="Filter processes by name"; search.TextChanged+=delegate { RebuildProcesses(); };
+            searchFrame.Controls.Add(search); searchFrame.Paint+=delegate(object sender,PaintEventArgs e) { using(var p=new Pen(search.ContainsFocus?Palette.Mint:Palette.Line)) e.Graphics.DrawRectangle(p,0,0,searchFrame.Width-1,searchFrame.Height-1); };
+            search.GotFocus+=delegate { searchFrame.Invalidate(); }; search.LostFocus+=delegate { searchFrame.Invalidate(); };
+            eventList.BackColor=Palette.Card; eventList.ForeColor=Palette.Text; eventList.BorderStyle=BorderStyle.None; eventList.DrawMode=DrawMode.OwnerDrawFixed; eventList.IntegralHeight=true; eventList.AccessibleName="Power and battery event log";
             eventList.DrawItem+=DrawEvent;
             eventList.SelectedIndexChanged+=delegate { var entry=eventList.SelectedItem as PowerEvent; eventTip.SetToolTip(eventList,entry==null?"":entry.Detail); };
-            Content.Controls.AddRange(new Control[]{processGrid,eventList,search});
+            Content.Controls.AddRange(new Control[]{processGrid,eventList,searchFrame});
             FormClosing += delegate(object sender,FormClosingEventArgs e) { if(e.CloseReason==CloseReason.UserClosing) { e.Cancel=true; HideToTray(); } };
             Resize += delegate { if(WindowState==FormWindowState.Minimized) { HideToTray(); return; } restoreState=WindowState; PositionButtons(); Content.Invalidate(); };
             VisibleChanged += delegate { if(Visible) { RebuildProcesses(); RefreshHistory(); } };
@@ -97,11 +101,33 @@ namespace PowerPal {
             update.SetBounds((int)((width-284)*d),(int)(28*d),(int)(144*d),(int)(34*d));
             settings.SetBounds((int)((width-130)*d),(int)(28*d),(int)(102*d),(int)(34*d));
             float left=(width-72)*0.64f,rx=44+left,right=width-left-72;
-            processGrid.SetBounds((int)(48*d),(int)(665*d),(int)((left-40)*d),Math.Max(100,Content.ClientSize.Height-(int)(739*d)));
-            search.SetBounds((int)((left-156)*d),(int)(612*d),(int)(164*d),(int)(26*d));
-            eventList.SetBounds((int)((rx+20)*d),(int)(650*d),(int)((right-40)*d),Math.Max(115,Content.ClientSize.Height-(int)(724*d))); eventList.ItemHeight=(int)(54*d);
-            processGrid.ColumnHeadersHeight=Px(30); processGrid.RowTemplate.Height=Px(28); foreach(DataGridViewRow row in processGrid.Rows) row.Height=Px(28);
-            foreach(DataGridViewColumn column in processGrid.Columns) column.MinimumWidth=Px(column.Name=="name"?110:column.Name=="memory"?50:column.Name=="io"?80:68);
+            processGrid.DefaultCellStyle.Font=UiFont(13); processGrid.ColumnHeadersDefaultCellStyle.Font=UiFont(12,FontStyle.Bold);
+            int rowHeight=Math.Max(Px(32),UiText.LineHeight(processGrid,UiFont(13))+Px(10));
+            int headerHeight=Math.Max(Px(36),UiText.LineHeight(processGrid,UiFont(12,FontStyle.Bold))+Px(12));
+            processGrid.ColumnHeadersHeight=headerHeight; processGrid.RowTemplate.Height=rowHeight;
+            processGrid.DefaultCellStyle.Padding=new Padding(Px(6),Px(3),Px(6),Px(3));
+            foreach(DataGridViewRow row in processGrid.Rows) row.Height=rowHeight;
+            int available=Math.Max(headerHeight+rowHeight,Content.Height-Px(739));
+            processGrid.SetBounds(Px(48),Px(665),Px(left-40),available);
+            if(columnDpi!=ContentDpi) {
+                // Fill sizing mutates FillWeight while minimum widths change. Reset as
+                // one batch so a trip through a larger scale cannot crush columns.
+                processGrid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.None;
+                int[] weights={24,14,14,12,12,11,13};
+                foreach(DataGridViewColumn column in processGrid.Columns) {
+                    var header=(SortHeaderCell)column.HeaderCell; header.Scale=d;
+                    column.MinimumWidth=Math.Max(Px(column.Name=="name"?110:48),UiText.Measure(processGrid,column.HeaderText,UiFont(12,FontStyle.Bold)).Width+Px(36));
+                    column.FillWeight=weights[column.Index];
+                }
+                processGrid.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill; columnDpi=ContentDpi;
+            }
+            int horizontal=processGrid.Controls.OfType<HScrollBar>().Any(b=>b.Visible)?SystemInformation.HorizontalScrollBarHeight:0;
+            processGrid.Height=headerHeight+Math.Max(1,(available-headerHeight-horizontal)/rowHeight)*rowHeight+horizontal;
+            int searchHeight=Math.Max(search.PreferredHeight,UiText.LineHeight(search,search.Font)+Px(4));
+            searchFrame.SetBounds(Px(left-156),Px(608),Px(164),Math.Max(Px(34),searchHeight+Px(8)));
+            search.SetBounds(Px(8),(searchFrame.Height-searchHeight)/2,searchFrame.Width-Px(16),searchHeight);
+            eventList.ItemHeight=UiText.LineHeight(eventList,UiFont(12,FontStyle.Bold))+UiText.LineHeight(eventList,UiFont(11))+Px(16);
+            eventList.SetBounds(Px(rx+20),Px(662),Px(right-40),Math.Max(eventList.ItemHeight,Content.Height-Px(736)));
         }
         void ConfigureProcessGrid() {
             processGrid.ReadOnly=true; processGrid.AllowUserToAddRows=false; processGrid.AllowUserToDeleteRows=false; processGrid.AllowUserToResizeRows=false; processGrid.RowHeadersVisible=false; processGrid.MultiSelect=false;
@@ -109,7 +135,8 @@ namespace PowerPal {
             processGrid.EnableHeadersVisualStyles=false; processGrid.ColumnHeadersDefaultCellStyle.BackColor=Palette.Bg; processGrid.ColumnHeadersDefaultCellStyle.ForeColor=Palette.Muted; processGrid.ColumnHeadersDefaultCellStyle.SelectionBackColor=Palette.Bg; processGrid.ColumnHeadersDefaultCellStyle.SelectionForeColor=Palette.Text; processGrid.ColumnHeadersDefaultCellStyle.WrapMode=DataGridViewTriState.False; processGrid.ColumnHeadersHeight=30; processGrid.RowTemplate.Height=28;
             processGrid.DefaultCellStyle.BackColor=Palette.Card; processGrid.DefaultCellStyle.ForeColor=Palette.Text; processGrid.DefaultCellStyle.SelectionBackColor=Palette.Selection; processGrid.DefaultCellStyle.SelectionForeColor=Palette.Text; processGrid.CellBorderStyle=DataGridViewCellBorderStyle.SingleHorizontal;
             foreach(var col in new[]{new[]{"name","App","24"},new[]{"share","Load %","14"},new[]{"watts","GPU W~","14"},new[]{"cpu","CPU %","12"},new[]{"gpu","GPU %","12"},new[]{"memory","MB","11"},new[]{"io","I/O MB/s","13"}}) {
-                int i=processGrid.Columns.Add(col[0],col[1]); processGrid.Columns[i].FillWeight=int.Parse(col[2]); processGrid.Columns[i].SortMode=DataGridViewColumnSortMode.Programmatic;
+                int i=processGrid.Columns.Add(col[0],col[1]); processGrid.Columns[i].HeaderCell=new SortHeaderCell { Value=col[1] }; processGrid.Columns[i].FillWeight=int.Parse(col[2]); processGrid.Columns[i].SortMode=DataGridViewColumnSortMode.Programmatic;
+                processGrid.Columns[i].DefaultCellStyle.Alignment=i==0?DataGridViewContentAlignment.MiddleLeft:DataGridViewContentAlignment.MiddleRight;
             }
             processGrid.Columns["share"].ToolTipText="Activity share: CPU + GPU activity normalized across readable apps. This is NOT a share of system power.";
             processGrid.Columns["watts"].ToolTipText="Estimated GPU watts only, based on matched NVIDIA board power and activity over the sensor interval. Works on AC or battery. Excludes CPU, display and other components. -- means no current estimate.";
@@ -135,13 +162,13 @@ namespace PowerPal {
             Content.Invalidate();
         }
         void DrawEvent(object sender,DrawItemEventArgs e) {
-            if(e.Index<0) return; var entry=(PowerEvent)eventList.Items[e.Index]; float d=ScaleFactor;
+            if(e.Index<0) return; var entry=(PowerEvent)eventList.Items[e.Index];
             using(var b=new SolidBrush((e.State&DrawItemState.Selected)!=0?Palette.Selection:Palette.Card)) e.Graphics.FillRectangle(b,e.Bounds);
-            using(var f=new Font("Segoe UI",12*d,FontStyle.Bold,GraphicsUnit.Pixel)) using(var muted=new Font("Segoe UI",11*d,FontStyle.Regular,GraphicsUnit.Pixel))
-            using(var ink=new SolidBrush(Palette.Text)) using(var sub=new SolidBrush(Palette.Muted)) using(var format=new StringFormat { Trimming=StringTrimming.EllipsisCharacter,FormatFlags=StringFormatFlags.NoWrap }) {
-                e.Graphics.DrawString(entry.Time.ToLocalTime().ToString("HH:mm:ss")+"  "+entry.Title,f,ink,new RectangleF(e.Bounds.X+3,e.Bounds.Y+4,e.Bounds.Width-10,22*d),format);
-                e.Graphics.DrawString(entry.Detail,muted,sub,new RectangleF(e.Bounds.X+3,e.Bounds.Y+26*d,e.Bounds.Width-10,23*d),format);
-            }
+            var title=UiFont(12,FontStyle.Bold); var detail=UiFont(11);
+            int line=UiText.LineHeight(eventList,title),second=UiText.LineHeight(eventList,detail);
+            var flags=UiText.SingleLine|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis;
+            TextRenderer.DrawText(e.Graphics,entry.Time.ToLocalTime().ToString("HH:mm:ss")+"  "+entry.Title,title,new Rectangle(e.Bounds.X+Px(3),e.Bounds.Y+Px(5),e.Bounds.Width-Px(10),line),Palette.Text,flags);
+            TextRenderer.DrawText(e.Graphics,entry.Detail,detail,new Rectangle(e.Bounds.X+Px(3),e.Bounds.Y+Px(9)+line,e.Bounds.Width-Px(10),second),Palette.Muted,flags);
         }
         public DialogResult OpenSettings(Preferences preferences,Action<bool> applyStartup=null) {
             if(activeSettings!=null) { activeSettings.Activate(); return DialogResult.None; }
@@ -176,10 +203,10 @@ namespace PowerPal {
             catch(Exception ex) { if(!IsDisposed) { recording="History unavailable: "+ex.Message; recordingError=true; Content.Invalidate(); } }
         }
         void PaintDashboard(object sender,PaintEventArgs e) {
-            var g=e.Graphics; g.ScaleTransform(ScaleFactor,ScaleFactor); g.SmoothingMode=SmoothingMode.AntiAlias;
+            var g=e.Graphics; g.ScaleTransform(ScaleFactor,ScaleFactor); g.SmoothingMode=SmoothingMode.AntiAlias; g.TextRenderingHint=System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             float w=Content.ClientSize.Width/ScaleFactor,h=Content.ClientSize.Height/ScaleFactor;
             Brand.DrawBolt(g,new RectangleF(28,28,32,36),Palette.Mint);
-            TextAt(g,"PowerPal",72,24,25,Palette.Text,true); TextAt(g,"v"+ReleaseUpdater.Current.ToString(3),240,39,11,Palette.Muted,false,125); TextAt(g,"A little clarity for every watt.",74,65,10,Palette.Muted,false);
+            TextAt(g,"PowerPal",72,24,25,Palette.Text,true); TextAt(g,"v"+ReleaseUpdater.Current.ToString(3),240,39,11,Palette.Muted,false,125); TextAt(g,"A little clarity for every watt.",74,78,10,Palette.Muted,false);
             bool stale=lastSaved.HasValue && (DateTime.Now-lastSaved.Value).TotalSeconds>25;
             using(var b=new SolidBrush(recordingError || stale || activityLogError!=null ? Palette.Amber : Palette.Mint)) g.FillEllipse(b,w-15-12,78,7,7);
             TextAt(g,activityLogError!=null?"APP ACTIVITY LOG ERROR - battery recording continues":stale?"Reading delayed - last saved "+lastSaved.Value.ToString("HH:mm:ss"):recording, w-420,74,9,recordingError||stale||activityLogError!=null?Palette.Amber:Palette.Mint,false,390);
@@ -227,7 +254,7 @@ namespace PowerPal {
             TextAt(g,selected!=null && selected.GpuEnergyWh.HasValue?"GPU energy~ "+selected.GpuEnergyWh.Value.ToString("0.000")+" Wh observed this run":"5 min / GPU power estimated / CPU watts unavailable",rect.X,rect.Y+218,8,Palette.Muted,false,rect.Width);
         }
         static void DrawResource(Graphics g,float x,float y,float width,string title,string value,List<ActivityPoint> points,Func<ActivityPoint,double?> get,Color color,double? fixedMax) {
-            TextAt(g,title,x,y,9,Palette.Muted,false,100); TextAt(g,value,x,y+16,11,color,true,100);
+            TextAt(g,title,x,y,9,Palette.Muted,false,100); TextAt(g,value,x,y+20,11,color,true,100);
             var rect=new RectangleF(x+108,y+2,width-108,34);
             using(var pen=new Pen(Palette.Line)) g.DrawRectangle(pen,rect.X,rect.Y,rect.Width,rect.Height);
             double maximum=fixedMax??Math.Max(1,points.Select(p=>get(p)??0).DefaultIfEmpty(1).Max()*1.1);
@@ -263,7 +290,7 @@ namespace PowerPal {
             Round(g,new RectangleF(x,y,w,h),Palette.Card); TextAt(g,title,x+18,y+16,9,accent,true,w-36); TextAt(g,value,x+18,y+44,value.Length>10?19:25,Palette.Text,true,w-36); TextAt(g,note,x+18,y+96,9,Palette.Muted,false,w-36);
         }
         internal static void TextAt(Graphics g,string text,float x,float y,float size,Color color,bool bold,float width=1000) {
-            using(var f=new Font("Segoe UI",size*96f/72f,bold?FontStyle.Bold:FontStyle.Regular,GraphicsUnit.Pixel)) using(var b=new SolidBrush(color)) using(var format=new StringFormat { Trimming=StringTrimming.EllipsisCharacter,FormatFlags=StringFormatFlags.NoWrap }) g.DrawString(text,f,b,new RectangleF(x,y,Math.Max(1,width),Math.Max(32,size*1.8f)),format);
+            using(var f=new Font("Segoe UI",size*96f/72f,bold?FontStyle.Bold:FontStyle.Regular,GraphicsUnit.Pixel)) using(var b=new SolidBrush(color)) using(var format=new StringFormat { Trimming=StringTrimming.EllipsisCharacter,FormatFlags=StringFormatFlags.NoWrap }) g.DrawString(text,f,b,new RectangleF(x,y,Math.Max(1,width),(float)Math.Ceiling(f.GetHeight(g))+4),format);
         }
         static void Round(Graphics g,RectangleF r,Color color) {
             const float d=18; using(var p=new GraphicsPath()) { p.AddArc(r.X,r.Y,d,d,180,90); p.AddArc(r.Right-d,r.Y,d,d,270,90); p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90); p.AddArc(r.X,r.Bottom-d,d,d,90,90); p.CloseFigure(); using(var b=new SolidBrush(color)) g.FillPath(b,p); }

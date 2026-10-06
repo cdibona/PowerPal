@@ -15,7 +15,7 @@ jobs:
       - name: Choose version
         shell: pwsh
         run: |
-          $version = '0.3.0'
+          $version = '0.3.1'
           if ($env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME.TrimStart('v') }
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Release tags must be vMAJOR.MINOR.PATCH' }
           "POWERPAL_VERSION=$version" >> $env:GITHUB_ENV
@@ -30,6 +30,10 @@ jobs:
           $process = Start-Process "./bin/v$env:POWERPAL_VERSION/PowerPal.exe" -ArgumentList @('--window-test', $windowTest) -WindowStyle Hidden -PassThru -Wait
           Get-Content "$windowTest/window-result.txt"
           if ($process.ExitCode -ne 0) { throw 'Window/Settings regression failed' }
+          $uiTest = Join-Path $env:RUNNER_TEMP 'PowerPal-ui-tests'
+          $process = Start-Process "./bin/v$env:POWERPAL_VERSION/PowerPal.exe" -ArgumentList @('--dpi-test', $uiTest) -WindowStyle Hidden -PassThru -Wait
+          Get-Content "$uiTest/ui-result.txt"
+          if ($process.ExitCode -ne 0) { throw 'Typography/sort-header regression failed' }
       - name: Package
         shell: pwsh
         run: ./package.ps1 -Version $env:POWERPAL_VERSION

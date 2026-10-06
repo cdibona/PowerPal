@@ -122,13 +122,13 @@ namespace PowerPal {
             var automatic=new CheckBox { Text="Automatically install updates from GitHub Releases",Checked=preferences.AutoUpdate,Bounds=new System.Drawing.Rectangle(22,62,510,26) };
             var info=new Label { Text="PowerPal checks the public release at startup and every six hours.\nUpdates install while the dashboard is in the tray. No login needed.",Bounds=new System.Drawing.Rectangle(22,100,510,48) };
             var themeLabel=new Label { Text="Appearance",Bounds=new System.Drawing.Rectangle(22,173,120,26) };
-            var theme=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList,Bounds=new System.Drawing.Rectangle(160,170,260,30),AccessibleName="Appearance" };
+            var theme=new ScaledComboBox { AccessibleName="Appearance" };
             theme.Items.AddRange(new object[]{"Auto (follow Windows)","Light","Dark"});
             theme.SelectedIndex=Theme.Mode=="Light"?1:Theme.Mode=="Dark"?2:0;
             theme.SelectedIndexChanged+=delegate { preferences.ThemeMode=theme.SelectedIndex==1?"Light":theme.SelectedIndex==2?"Dark":"Auto"; Theme.Set(preferences.ThemeMode); try { preferences.Save(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Could not save appearance"); } };
             var hint=new Label { Text="You can also click the dashboard lightning bolt to cycle themes.",Bounds=new System.Drawing.Rectangle(22,218,510,38) };
             var scaleLabel=new Label { Text="Display scaling",Bounds=new System.Drawing.Rectangle(22,269,120,26) };
-            var scale=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList,Bounds=new System.Drawing.Rectangle(160,266,372,30),AccessibleName="Display scaling" };
+            var scale=new ScaledComboBox { AccessibleName="Display scaling" };
             scale.Items.AddRange(DisplayScaling.Options.Select(p=>(object)DisplayScaling.Label(p)).ToArray());
             scale.SelectedIndex=Array.IndexOf(DisplayScaling.Options,DisplayScaling.Normalize(preferences.DisplayScalePercent));
             scale.SelectedIndexChanged+=delegate {
@@ -140,15 +140,29 @@ namespace PowerPal {
             };
             var scaleHint=new Label { Text="Applies immediately to PowerPal. Manual scales replace Windows scaling.\nThe dashboard stays maximized; smaller windows scroll when needed.",Bounds=new System.Drawing.Rectangle(22,310,510,48) };
             var appLabel=new Label { Text="Automatically log top apps",Bounds=new System.Drawing.Rectangle(22,377,300,26) };
-            var appLimit=new NumericUpDown { Minimum=1,Maximum=100,Value=preferences.AppLimit,Bounds=new System.Drawing.Rectangle(370,372,162,30),AccessibleName="Number of top apps to record" };
+            var appLimit=new ScaledNumericUpDown { Minimum=1,Maximum=100,Value=preferences.AppLimit,AutoSize=false,AccessibleName="Number of top apps to record" };
             var appHint=new Label { Text="Ranked by CPU + GPU activity. History saves every 10 seconds,\nincluding while PowerPal is in the tray.",Bounds=new System.Drawing.Rectangle(22,414,510,48) };
             var sensors=new CheckBox { Text="Read GPU power sensors while the GPU is active",Checked=preferences.GpuSensors,AccessibleName="GPU power sensors",Bounds=new System.Drawing.Rectangle(22,473,510,26) };
             var sensorHint=new Label { Text="NVIDIA driver required. Polls about every 5 seconds.\nApp GPU watts are estimates; CPU watts are unavailable.",Bounds=new System.Drawing.Rectangle(22,506,510,48) };
             var save=new Button { Text="Save settings",Bounds=new System.Drawing.Rectangle(370,567,165,34),FlatStyle=FlatStyle.Flat };
             save.Click+=delegate { try { if(applyStartup!=null) applyStartup(startup.Checked); else Preferences.Startup=startup.Checked; preferences.AutoUpdate=automatic.Checked; preferences.TopAppCount=(int)appLimit.Value; preferences.GpuSensors=sensors.Checked; preferences.Save(); DialogResult=DialogResult.OK; Close(); } catch(Exception ex) { MessageBox.Show(this,ex.Message,"Could not save settings"); } };
             var controls=new Control[]{startup,automatic,info,themeLabel,theme,hint,scaleLabel,scale,scaleHint,appLabel,appLimit,appHint,sensors,sensorHint,save}; Content.Controls.AddRange(controls); AcceptButton=save;
-            var bounds=controls.Select(c=>c.Bounds).ToArray();
-            ContentLayout+=delegate { for(int i=0;i<controls.Length;i++) { var r=bounds[i]; controls[i].SetBounds(Px(r.X),Px(r.Y),Px(r.Width),Px(r.Height)); } };
+            foreach(var label in controls.OfType<Label>()) { label.UseCompatibleTextRendering=false; label.TextAlign=System.Drawing.ContentAlignment.MiddleLeft; }
+            ContentLayout+=delegate {
+                int y=Px(20),line=UiText.LineHeight(Content,Font),fieldHeight=Math.Max(Px(36),line+Px(12));
+                Action<Control> check=c=> { c.SetBounds(Px(22),y,Px(510),line+Px(12)); y=c.Bottom+Px(8); };
+                Action<Label> note=c=> { c.SetBounds(Px(22),y,Px(510),UiText.WrappedHeight(c,Px(510))+Px(4)); y=c.Bottom+Px(22); };
+                Action<Label,ScaledComboBox> choice=(label,box)=> {
+                    box.ApplyScale(ScaleFactor); box.SetBounds(Px(160),y,Px(372),fieldHeight);
+                    label.SetBounds(Px(22),y,Px(128),box.Height); y=box.Bottom+Px(8);
+                };
+                check(startup); check(automatic); note(info);
+                choice(themeLabel,theme); note(hint);
+                choice(scaleLabel,scale); note(scaleHint);
+                appLimit.SetBounds(Px(370),y,Px(162),fieldHeight); appLimit.ApplyScale(ScaleFactor); appLabel.SetBounds(Px(22),y,Px(330),appLimit.Height); y+=appLimit.Height+Px(8); note(appHint);
+                check(sensors); note(sensorHint);
+                save.SetBounds(Px(367),y,Px(165),fieldHeight); SetContentHeight(save.Bottom+Px(22));
+            };
             Theme.Changed+=ApplyTheme; ApplyTheme(); InitializeContent(new System.Drawing.Size(560,625),new System.Drawing.Size(560,625));
         }
         void ApplyTheme() { Theme.PaintControls(this); Content.Invalidate(true); }

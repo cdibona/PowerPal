@@ -60,6 +60,7 @@ namespace PowerPal {
                         Check(form.WindowState==state && form.Bounds==bounds && form.RestoreBounds==restored,"Settings or scaling changed parent state/bounds: "+state+" -> "+form.WindowState);
                         Check(OnScreen(current),"Settings extends off the working area at "+DisplayScaling.Percent+"%: "+current.Bounds);
                         Check(current.ContentFits && form.ContentFits,"Controls overflow their scrollable canvas");
+                        UiTests.CheckText(form); UiTests.CheckText(current); UiTests.CheckSettingsFlow(current);
                         var scale=Descendants(current).OfType<ComboBox>().Single(c=>c.AccessibleName=="Display scaling");
                         if(stage==2) {
                             driver.Stop();
