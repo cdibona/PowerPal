@@ -15,7 +15,7 @@ jobs:
       - name: Choose version
         shell: pwsh
         run: |
-          $version = '0.2.1'
+          $version = '0.2.2'
           if ($env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME.TrimStart('v') }
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Release tags must be vMAJOR.MINOR.PATCH' }
           "POWERPAL_VERSION=$version" >> $env:GITHUB_ENV
@@ -40,6 +40,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: PowerPal-windows-x64
@@ -48,4 +49,4 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME ./dist/* --repo $env:GITHUB_REPOSITORY --verify-tag --generate-notes
+        run: gh release create $env:GITHUB_REF_NAME ./dist/* --repo $env:GITHUB_REPOSITORY --verify-tag --notes-file RELEASE_NOTES.md

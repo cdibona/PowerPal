@@ -57,13 +57,13 @@ namespace PowerPal {
             return events.OrderByDescending(e=>e.Time).Take(limit).ToList();
         }
     }
-    internal sealed class ActivityPoint { public DateTime Time; public double Cpu,Memory; public double? Io; }
+    internal sealed class ActivityPoint { public DateTime Time; public double Cpu,Memory; public double? Io,Gpu,Watts,Share; }
     internal sealed class ActivityTrends {
         readonly Dictionary<string,List<ActivityPoint>> tracks=new Dictionary<string,List<ActivityPoint>>(StringComparer.OrdinalIgnoreCase);
         public void Observe(DateTime time,IEnumerable<Consumer> consumers) {
             foreach(var c in consumers) {
                 List<ActivityPoint> points; if(!tracks.TryGetValue(c.Name,out points)) { points=new List<ActivityPoint>(); tracks[c.Name]=points; }
-                points.Add(new ActivityPoint { Time=time,Cpu=c.Cpu,Memory=c.MemoryMb,Io=c.DiskMb });
+                points.Add(new ActivityPoint { Time=time,Cpu=c.Cpu,Memory=c.MemoryMb,Io=c.DiskMb,Gpu=c.Gpu,Watts=c.EstimatedWatts,Share=c.PowerShare });
             }
             foreach(var key in tracks.Keys.ToList()) { tracks[key].RemoveAll(p=>p.Time<time.AddMinutes(-5)); if(tracks[key].Count==0) tracks.Remove(key); }
         }

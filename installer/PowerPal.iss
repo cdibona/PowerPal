@@ -1,17 +1,20 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.1"
+  #define AppVersion "0.2.2"
 #endif
 #ifndef AppIdentity
   #define AppIdentity "PowerPal.Windows"
 #endif
+#ifndef AppDisplayName
+  #define AppDisplayName "PowerPal"
+#endif
 [Setup]
 AppId={#AppIdentity}
-AppName=PowerPal
+AppName={#AppDisplayName}
 AppVersion={#AppVersion}
 AppPublisher=Chris DiBona
 AppPublisherURL=https://github.com/cdibona/PowerPal
 DefaultDirName={localappdata}\Programs\PowerPal
-DefaultGroupName=PowerPal
+DefaultGroupName={#AppDisplayName}
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -30,6 +33,7 @@ DisableProgramGroupPage=yes
 UsePreviousTasks=yes
 [Files]
 Source: "..\bin\v{#AppVersion}\PowerPal.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\bin\v{#AppVersion}\PowerPal.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 [Tasks]
 Name: "startup"; Description: "Start PowerPal in the tray when I sign in"; Flags: checkedonce
