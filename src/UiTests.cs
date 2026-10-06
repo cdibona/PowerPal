@@ -90,7 +90,12 @@ namespace PowerPal {
                 report.Add("PASS: initial 125% override on actual monitor; native text fits without double scaling");
                 int[] firstWidths=null;
                 foreach(string theme in new[]{"Light","Dark"}) foreach(int dpi in new[]{96,120,144,168,192,216,240,288,120,96}) {
-                    Theme.Set(theme); form.SetContentDpi(dpi); settings.SetContentDpi(dpi); form.ClientSize=new Size(1180*dpi/96,900*dpi/96); settings.ClientSize=new Size(560*dpi/96,625*dpi/96); Application.DoEvents();
+                    Theme.Set(theme);
+                    // Drive the saved scale through Settings. Directly overriding a
+                    // form would race queued native DPI events that reapply the setting.
+                    Children(settings).OfType<ComboBox>().Single(c=>c.AccessibleName=="Display scaling").SelectedIndex=Array.IndexOf(DisplayScaling.Options,dpi*100/96);
+                    form.ClientSize=new Size(1180*dpi/96,900*dpi/96); settings.ClientSize=new Size(560*dpi/96,625*dpi/96); Application.DoEvents();
+                    Check(form.ContentDpi==dpi && settings.ContentDpi==dpi,"DPI notification changed the selected scale: "+dpi+" -> "+form.ContentDpi+" / "+settings.ContentDpi);
                     if(!form.ContentFits || !settings.ContentFits) throw new Exception("Controls overflow at "+dpi+" DPI");
                     CheckText(form); CheckText(settings); CheckSettingsFlow(settings); CheckSort(form,apps); CheckText(form);
                     var filter=Children(form).OfType<TextBox>().Single(c=>c.AccessibleName=="Filter processes by name");
