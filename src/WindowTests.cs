@@ -61,12 +61,22 @@ namespace PowerPal {
                         Check(OnScreen(current),"Settings extends off the working area at "+DisplayScaling.Percent+"%: "+current.Bounds);
                         Check(current.ContentFits && form.ContentFits,"Controls overflow their scrollable canvas");
                         UiTests.CheckText(form); UiTests.CheckText(current); UiTests.CheckSettingsFlow(current);
-                        var scale=Descendants(current).OfType<ComboBox>().Single(c=>c.AccessibleName=="Display scaling");
+                        var scale=Descendants(current).OfType<SettingsChoice>().Single(c=>c.AccessibleName=="Display scaling");
                         if(stage==2) {
                             driver.Stop();
-                            Descendants(current).OfType<NumericUpDown>().Single().Value=7;
+                            current.ShowPage(1);
+                            var number=Descendants(current).OfType<SettingsNumber>().Single();
+                            var save=Descendants(current).OfType<Button>().Single(b=>b.Text=="Save settings");
+                            foreach(string invalid in new[]{"0","101","pasted text"}) {
+                                number.Entry.Text=invalid; save.PerformClick();
+                                Check(current.Visible && current.DialogResult==DialogResult.None,"Invalid app count closed Settings");
+                                UiTests.CheckSettingsFlow(current);
+                            }
+                            number.Value=1; Descendants(number).OfType<Button>().Single(b=>b.AccessibleName=="Log fewer apps").PerformClick(); Check(number.Value==1,"App count fell below minimum");
+                            number.Value=100; Descendants(number).OfType<Button>().Single(b=>b.AccessibleName=="Log more apps").PerformClick(); Check(number.Value==100,"App count exceeded maximum");
+                            number.Entry.Text="7";
                             Descendants(current).OfType<CheckBox>().Single(c=>c.AccessibleName=="GPU power sensors").Checked=false;
-                            Descendants(current).OfType<Button>().Single(b=>b.Text=="Save settings").PerformClick(); return;
+                            save.PerformClick(); return;
                         }
                         if(stage==0) {
                             var nested=form.OpenSettings(preferences); int dialogs=Application.OpenForms.OfType<SettingsDialog>().Count(); Check(nested==DialogResult.None && dialogs==1,"Repeated Settings request result="+nested+"; dialog count="+dialogs);
@@ -75,10 +85,10 @@ namespace PowerPal {
                         if(choice>0) {
                             int chosen=DisplayScaling.Options[choice-1];
                             Check(form.ContentDpi==DisplayScaling.ResolveDpi(form.DeviceDpi,chosen) && current.ContentDpi==DisplayScaling.ResolveDpi(current.DeviceDpi,chosen),"Scale selector did not apply to both windows");
-                            if(state==FormWindowState.Maximized && (chosen==125 || chosen==200)) current.SaveCanvas(Path.Combine(folder,"settings-"+chosen+".png"));
+                            if(state==FormWindowState.Maximized && (chosen==125 || chosen==200)) current.SaveDialog(Path.Combine(folder,"settings-"+chosen+".png"));
                         }
-                        if(choice<DisplayScaling.Options.Length) { scale.SelectedIndex=choice++; return; }
-                        scale.SelectedIndex=0; stage=2;
+                        if(choice<DisplayScaling.Options.Length) { scale.Menu.Items[choice++].PerformClick(); return; }
+                        scale.Menu.Items[0].PerformClick(); stage=2;
                     } catch(Exception ex) { failure=ex; driver.Stop(); if(current!=null) { current.DialogResult=DialogResult.Cancel; current.Close(); } }
                 };
                 driver.Start(); form.OpenSettings(preferences,delegate(bool enabled) { });

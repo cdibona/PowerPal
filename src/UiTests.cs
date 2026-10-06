@@ -15,14 +15,13 @@ namespace PowerPal {
         internal static void CheckText(ScaledForm form) {
             float scale=form.ContentDpi/96f;
             foreach(var c in Children(form)) {
+                if(!c.Visible) continue;
                 if(!(c is Button || c is Label || c is CheckBox || c is TextBox || c is ComboBox || c is NumericUpDown)) continue;
                 int line=UiText.LineHeight(c,c.Font);
-                Check(Math.Abs(c.Font.Size-13*scale)<.1,"Native font was scaled twice: "+c.GetType().Name+" "+c.Text);
+                Check(Math.Abs(c.Font.Size-form.FontPixels*scale)<.1,"Native font was scaled twice: "+c.GetType().Name+" "+c.Text);
                 var label=c as Label;
                 int needed=label!=null?UiText.WrappedHeight(c,c.ClientSize.Width):line;
                 Check(c.ClientSize.Height>=needed,"Text height clips in "+c.GetType().Name+" at "+form.ContentDpi+": "+c.Text+" ("+c.ClientSize.Height+" < "+needed+")");
-                var combo=c as ScaledComboBox;
-                if(combo!=null) Check(combo.ItemHeight>=line+6*scale,"Combo rows lost their text padding");
             }
             var grid=Children(form).OfType<ProcessGrid>().FirstOrDefault();
             if(grid!=null) {
@@ -37,10 +36,38 @@ namespace PowerPal {
             }
         }
         internal static void CheckSettingsFlow(SettingsDialog settings) {
-            var content=Children(settings).First(c=>c.Controls.OfType<CheckBox>().Any()); var items=content.Controls.Cast<Control>().ToArray();
-            for(int i=0;i<items.Length;i++) for(int j=i+1;j<items.Length;j++) Check(!items[i].Bounds.IntersectsWith(items[j].Bounds),"Settings fields overlap: "+items[i].Text+" / "+items[j].Text);
-            var number=Children(settings).OfType<NumericUpDown>().Single(); var edit=Children(number).OfType<TextBox>().Single();
-            Check(edit.ClientSize.Height>=UiText.LineHeight(edit,edit.Font)+3,"Numeric entry lacks room for descenders");
+            int page=settings.ActivePage;
+            try {
+                for(int i=0;i<3;i++) {
+                    settings.ShowPage(i); CheckText(settings);
+                    var content=Children(settings).First(c=>c.Controls.OfType<SettingsChoice>().Any());
+                    var items=content.Controls.Cast<Control>().Where(c=>c.Visible && c.Height>0).ToArray();
+                    for(int a=0;a<items.Length;a++) for(int b=a+1;b<items.Length;b++) Check(!items[a].Bounds.IntersectsWith(items[b].Bounds),"Settings fields overlap: "+items[a].Text+" / "+items[b].Text);
+                    foreach(var c in Children(settings).Where(c=>c.Visible && (c is Button || c is CheckBox))) {
+                        int reserve=(int)Math.Ceiling((c is CheckBox?26:12)*settings.ContentDpi/96f);
+                        if(c is Button) Check(UiText.Measure(c,c.Text,c.Font).Width<=c.ClientSize.Width-reserve,"Settings button clips horizontally: "+c.Text);
+                        else Check(UiText.WrappedHeight(c,c.ClientSize.Width-reserve)<=c.ClientSize.Height,"Settings checkbox clips words: "+c.Text);
+                    }
+                    Check(!((ScrollableControl)content.Parent).HorizontalScroll.Visible,"Settings requires horizontal scrolling: "+content.Bounds+" / "+content.Parent.ClientSize+" / "+settings.ClientSize);
+                }
+                var number=Children(settings).OfType<SettingsNumber>().Single();
+                Check(number.Entry.ClientSize.Height>=UiText.LineHeight(number.Entry,number.Entry.Font)+3,"Numeric entry lacks room for descenders");
+                var save=Children(settings).OfType<Button>().Single(b=>b.Text=="Save settings");
+                Check(settings.ClientRectangle.Contains(settings.RectangleToClient(save.RectangleToScreen(save.ClientRectangle))),"Save button is outside the window");
+            } finally { settings.ShowPage(page); }
+        }
+        static void CheckMenus(SettingsDialog settings,string folder,string suffix) {
+            settings.ShowPage(0);
+            foreach(var choice in Children(settings).OfType<SettingsChoice>()) {
+                choice.Menu.Opacity=0; choice.PerformClick(); Application.DoEvents();
+                foreach(ToolStripItem item in choice.Menu.Items) {
+                    var size=UiText.Measure(choice.Menu,item.Text,item.Font);
+                    Check(Math.Abs(item.Font.Size-settings.Font.Size)<.1 && item.Font.Unit==GraphicsUnit.Pixel,"Popup text uses a different scale from Settings");
+                    Check(item.Height>=size.Height+2 && item.Width>=size.Width+24,"Settings menu clips option: "+item.Text);
+                }
+                using(var bitmap=new Bitmap(choice.Menu.Width,choice.Menu.Height)) { choice.Menu.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size)); bitmap.Save(Path.Combine(folder,choice.AccessibleName.Replace(" ","-")+"-"+suffix+".png")); }
+                choice.Menu.Close();
+            }
         }
         static void CheckSort(Dashboard form,List<Consumer> apps) {
             var grid=Children(form).OfType<ProcessGrid>().Single();
@@ -93,8 +120,8 @@ namespace PowerPal {
                     Theme.Set(theme);
                     // Drive the saved scale through Settings. Directly overriding a
                     // form would race queued native DPI events that reapply the setting.
-                    Children(settings).OfType<ComboBox>().Single(c=>c.AccessibleName=="Display scaling").SelectedIndex=Array.IndexOf(DisplayScaling.Options,dpi*100/96);
-                    form.ClientSize=new Size(1180*dpi/96,900*dpi/96); settings.ClientSize=new Size(560*dpi/96,625*dpi/96); Application.DoEvents();
+                    Children(settings).OfType<SettingsChoice>().Single(c=>c.AccessibleName=="Display scaling").Menu.Items[Array.IndexOf(DisplayScaling.Options,dpi*100/96)].PerformClick();
+                    form.ClientSize=new Size(1180*dpi/96,900*dpi/96); Application.DoEvents();
                     Check(form.ContentDpi==dpi && settings.ContentDpi==dpi,"DPI notification changed the selected scale: "+dpi+" -> "+form.ContentDpi+" / "+settings.ContentDpi);
                     if(!form.ContentFits || !settings.ContentFits) throw new Exception("Controls overflow at "+dpi+" DPI");
                     CheckText(form); CheckText(settings); CheckSettingsFlow(settings); CheckSort(form,apps); CheckText(form);
@@ -106,8 +133,10 @@ namespace PowerPal {
                         if(firstWidths==null) firstWidths=widths; else Check(widths.Zip(firstWidths,(a,b)=>Math.Abs(a-b)<=1).All(v=>v),"Column widths drift after DPI/theme round trip: "+string.Join(",",firstWidths)+" -> "+string.Join(",",widths)+"; canvas parent "+form.ClientSize);
                     }
                     form.SaveCanvas(Path.Combine(folder,"dashboard-"+theme+"-"+dpi+".png"));
-                    settings.SaveCanvas(Path.Combine(folder,"settings-"+theme+"-"+dpi+".png"));
-                    report.Add("PASS: "+theme+" "+dpi+" DPI: text fits; Settings fields do not overlap; all 7 headers sort both ways, survive refresh and paint correct arrows; stable column widths");
+                    Check(settings.Width<=Math.Ceiling(440*dpi/96.0)+80 && settings.Height<=Math.Ceiling(300*dpi/96.0)+80,"Settings enlarged beyond its compact design");
+                    for(int page=0;page<3;page++) { settings.ShowPage(page); settings.SaveDialog(Path.Combine(folder,"settings-"+page+"-"+theme+"-"+dpi+".png")); }
+                    CheckMenus(settings,folder,theme+"-"+dpi);
+                    report.Add("PASS: "+theme+" "+dpi+" DPI: text fits; compact Settings pages/menus do not clip or overlap; all 7 headers sort both ways, survive refresh and paint correct arrows; stable column widths");
                 }
                 form.SetUpdateBusy(true); form.UpdateRelease("Checking GitHub releases..."); form.SetContentDpi(96); form.ClientSize=new Size(1180,900);
                 form.SaveCanvas(Path.Combine(folder,"update-checking.png"));

@@ -13,12 +13,15 @@ namespace PowerPal {
         Size designSize,minimumContent;
         bool ready,layingOut,initialSizeApplied;
         protected bool FitContentOnScaleChange;
+        protected bool FlexibleContentWidth;
+        protected virtual float BaseFontPixels { get { return 13; } }
+        internal float FontPixels { get { return BaseFontPixels; } }
         readonly Dictionary<string,Font> fonts=new Dictionary<string,Font>();
         protected float ScaleFactor { get; private set; }
         protected event Action ContentLayout;
         protected ScaledForm() {
             AutoScaleMode=AutoScaleMode.None; ScaleFactor=1;
-            Controls.Add(viewport); viewport.Controls.Add(Content);
+            Content.Margin=Padding.Empty; Controls.Add(viewport); viewport.Controls.Add(Content);
             viewport.SizeChanged+=delegate { LayoutCanvas(); };
             DisplayScaling.Changed+=ApplyDisplayScaling;
         }
@@ -31,9 +34,8 @@ namespace PowerPal {
             string key=ContentDpi+":"+pixels.ToString(System.Globalization.CultureInfo.InvariantCulture)+":"+style;
             Font font; if(!fonts.TryGetValue(key,out font)) { font=new Font("Segoe UI",pixels*ScaleFactor,style,GraphicsUnit.Pixel); fonts[key]=font; } return font;
         }
-        protected void SetContentHeight(int pixels) {
-            minimumContent.Height=designSize.Height=(int)Math.Ceiling(pixels/ScaleFactor);
-        }
+        protected void SetScrollHeight(int pixels) { minimumContent.Height=(int)Math.Ceiling(pixels/ScaleFactor); }
+        protected void RefreshContentLayout() { LayoutCanvas(); }
         protected override void OnHandleCreated(EventArgs e) {
             base.OnHandleCreated(e); Theme.PaintFrame(this);
             if(ready) { SetContentDpi(DisplayScaling.ResolveDpi(DeviceDpi,DisplayScaling.Percent)); FitToDisplay(!initialSizeApplied); initialSizeApplied=true; }
@@ -73,7 +75,7 @@ namespace PowerPal {
         }
         internal void SetContentDpi(int dpi) {
             ScaleFactor=Math.Max(96,dpi)/96f;
-            Font=UiFont(13); SetNativeFonts(Content,Font);
+            Font=UiFont(BaseFontPixels); SetNativeFonts(this,Font);
             LayoutCanvas(); Content.Invalidate(true);
         }
         static void SetNativeFonts(Control parent,Font font) {
@@ -83,9 +85,10 @@ namespace PowerPal {
         void LayoutCanvas() {
             if(!ready || layingOut) return; layingOut=true;
             try {
-                for(int pass=0;pass<2;pass++) {
-                    Content.Size=new Size(Math.Max(Px(minimumContent.Width),viewport.ClientSize.Width),Math.Max(Px(minimumContent.Height),viewport.ClientSize.Height));
+                for(int pass=0;pass<3;pass++) {
+                    Content.Size=new Size(FlexibleContentWidth?viewport.ClientSize.Width:Math.Max(Px(minimumContent.Width),viewport.ClientSize.Width),Math.Max(Px(minimumContent.Height),viewport.ClientSize.Height));
                     if(ContentLayout!=null) ContentLayout();
+                    if(FlexibleContentWidth) viewport.PerformLayout();
                 }
                 Content.Invalidate();
             } finally { layingOut=false; }
@@ -95,7 +98,7 @@ namespace PowerPal {
         }
         internal int ContentDpi { get { return (int)Math.Round(ScaleFactor*96); } }
         internal bool ContentFits { get { return Content.Controls.Count==0 || AllControlsFit(); } }
-        bool AllControlsFit() { foreach(Control c in Content.Controls) if(c.Left<0 || c.Top<0 || c.Right>Content.Width || c.Bottom>Content.Height) return false; return true; }
+        bool AllControlsFit() { foreach(Control c in Content.Controls) if(c.Visible && (c.Left<0 || c.Top<0 || c.Right>Content.Width || c.Bottom>Content.Height)) return false; return true; }
         protected override void Dispose(bool disposing) { if(disposing) DisplayScaling.Changed-=ApplyDisplayScaling; base.Dispose(disposing); if(disposing) { foreach(var font in fonts.Values) font.Dispose(); fonts.Clear(); } }
     }
 }

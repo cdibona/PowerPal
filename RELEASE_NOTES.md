@@ -1,13 +1,9 @@
-## PowerPal 0.3.1
+## PowerPal 0.3.2
 
-- Fix clipped text by measuring Windows font heights and reserving padding in the process filter, table rows, event log, dropdowns and numeric entry.
-- Let Settings descriptions determine their own height, with consistent spacing between fields at every display scale.
-- Restore visible up/down indicators in every sortable Power users header. Highlight the active direction and keep it through live refreshes.
-- Keep column proportions stable when switching scales, align numeric values, and avoid partial rows where possible.
-- Give dashboard headings, large readings and resource details adequate line height and spacing.
-- Reapply explicit pixel fonts after monitor DPI changes, including when a manual scale overrides Windows.
-- Add release regression checks for 100-300% scaling in light/dark themes, text fitting, Settings overlap, filtering, sorting and rendered arrows. Retain maximized/normal window and tray-state checks.
+- Rebuild Settings as compact Appearance, Recording and Updates pages instead of one tall form. The base layout is 440 × 300 logical pixels, with consistent 9-point text at 100% scale.
+- Replace the mixed native/custom dropdown and numeric sizing with measured menu buttons and a padded number field. Open menus use the same text scale as Settings.
+- Shorten and wrap descriptions, keep Save/Close visible, and scroll only the current page on smaller desktops. Remove unwanted horizontal scrollbars after scale changes.
+- Show the actual Windows and PowerPal scale percentages so overrides are clear. Theme and scale still apply and save immediately.
+- Test all three pages and open menus in both themes at 100–300%, including horizontal text fit, number-entry validation, saved preferences and normal/maximized dashboard behavior.
 
-GPU sensors and automatic background recording continue as before. App GPU watts remain estimates of the GPU component, not total application wattage.
-
-Use **Check updates**, then minimize to apply. No reinstall or GitHub login is needed.
+Use **Check updates**, wait for verification, then minimize to apply. Recording and existing history continue as before.

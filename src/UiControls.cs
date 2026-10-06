@@ -14,32 +14,6 @@ namespace PowerPal {
             using(var g=control.CreateGraphics()) return TextRenderer.MeasureText(g,control.Text,control.Font,new Size(Math.Max(1,width),10000),TextFormatFlags.WordBreak|TextFormatFlags.TextBoxControl|TextFormatFlags.NoPrefix).Height;
         }
     }
-    internal sealed class ScaledComboBox : ComboBox {
-        float scale=1;
-        public ScaledComboBox() { DrawMode=DrawMode.OwnerDrawFixed; DropDownStyle=ComboBoxStyle.DropDownList; IntegralHeight=true; }
-        public void ApplyScale(float value) { scale=value; ItemHeight=UiText.LineHeight(this,Font)+(int)Math.Ceiling(8*scale); DropDownHeight=ItemHeight*Math.Min(9,Math.Max(1,Items.Count))+4; }
-        protected override void OnDrawItem(DrawItemEventArgs e) {
-            bool selected=(e.State&DrawItemState.Selected)!=0;
-            using(var brush=new SolidBrush(selected?Palette.Selection:Palette.Card)) e.Graphics.FillRectangle(brush,e.Bounds);
-            string text=e.Index>=0?GetItemText(Items[e.Index]):Text;
-            var bounds=Rectangle.Inflate(e.Bounds,-(int)Math.Ceiling(6*scale),-(int)Math.Ceiling(2*scale));
-            TextRenderer.DrawText(e.Graphics,text,Font,bounds,Palette.Text,UiText.SingleLine|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis);
-            if((e.State&DrawItemState.Focus)!=0) e.DrawFocusRectangle();
-        }
-    }
-    internal sealed class ScaledNumericUpDown : NumericUpDown {
-        public void ApplyScale(float value) {
-            // UpDownBase fixes its height to FontHeight + borders and ignores the
-            // requested Height/MinimumSize. Reserve leading in that metric instead.
-            FontHeight=UiText.LineHeight(this,Font)+(int)Math.Ceiling(8*value); Height=PreferredHeight;
-            foreach(Control child in Controls) {
-                var edit=child as TextBox; if(edit==null) continue;
-                edit.AutoSize=false;
-                int height=UiText.LineHeight(edit,Font)+(int)Math.Ceiling(4*value);
-                edit.SetBounds(edit.Left,Math.Max(0,(ClientSize.Height-height)/2),edit.Width,height);
-            }
-        }
-    }
     internal sealed class ProcessGrid : DataGridView {
         public ProcessGrid() { DoubleBuffered=true; }
         internal void ClickHeader(int column) { OnColumnHeaderMouseClick(new DataGridViewCellMouseEventArgs(column,-1,0,0,new MouseEventArgs(MouseButtons.Left,1,0,0,0))); }
