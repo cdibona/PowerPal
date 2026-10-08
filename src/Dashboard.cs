@@ -101,9 +101,9 @@ namespace PowerPal {
             update.SetBounds((int)((width-284)*d),(int)(28*d),(int)(144*d),(int)(34*d));
             settings.SetBounds((int)((width-130)*d),(int)(28*d),(int)(102*d),(int)(34*d));
             float left=(width-72)*0.64f,rx=44+left,right=width-left-72;
-            processGrid.DefaultCellStyle.Font=UiFont(13); processGrid.ColumnHeadersDefaultCellStyle.Font=UiFont(12,FontStyle.Bold);
-            int rowHeight=Math.Max(Px(32),UiText.LineHeight(processGrid,UiFont(13))+Px(10));
-            int headerHeight=Math.Max(Px(36),UiText.LineHeight(processGrid,UiFont(12,FontStyle.Bold))+Px(12));
+            processGrid.DefaultCellStyle.Font=UiFont(FontPixels); processGrid.ColumnHeadersDefaultCellStyle.Font=UiFont(FontPixels,FontStyle.Bold);
+            int rowHeight=Math.Max(Px(32),UiText.LineHeight(processGrid,UiFont(FontPixels))+Px(10));
+            int headerHeight=Math.Max(Px(36),UiText.LineHeight(processGrid,UiFont(FontPixels,FontStyle.Bold))+Px(12));
             processGrid.ColumnHeadersHeight=headerHeight; processGrid.RowTemplate.Height=rowHeight;
             processGrid.DefaultCellStyle.Padding=new Padding(Px(6),Px(3),Px(6),Px(3));
             foreach(DataGridViewRow row in processGrid.Rows) row.Height=rowHeight;
@@ -115,7 +115,7 @@ namespace PowerPal {
                 int[] weights={24,14,14,12,12,11,13};
                 foreach(DataGridViewColumn column in processGrid.Columns) {
                     var header=(SortHeaderCell)column.HeaderCell; header.Scale=d;
-                    column.MinimumWidth=Math.Max(Px(column.Name=="name"?110:48),UiText.Measure(processGrid,column.HeaderText,UiFont(12,FontStyle.Bold)).Width+Px(36));
+                    column.MinimumWidth=Math.Max(Px(column.Name=="name"?110:48),UiText.Measure(processGrid,column.HeaderText,UiFont(FontPixels,FontStyle.Bold)).Width+Px(36));
                 }
                 int extra=Math.Max(0,processGrid.ClientSize.Width-SystemInformation.VerticalScrollBarWidth-processGrid.Columns.Cast<DataGridViewColumn>().Sum(c=>c.MinimumWidth));
                 int allocated=0,cumulative=0;

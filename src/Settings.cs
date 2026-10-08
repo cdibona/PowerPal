@@ -60,7 +60,6 @@ namespace PowerPal {
         readonly Label themeLabel=Note("Theme"),themeHint=Note("Theme and scale changes save immediately."),scaleLabel=Note("Display scale"),scaleHint=Note(""),appLabel=Note("Top apps to log"),appHint=Note("History saves every 10 seconds, including in the tray."),sensorHint=Note("Requires NVIDIA. App GPU watts are estimates; CPU watts are unavailable."),updateHint=Note("Checks GitHub at startup and every six hours.\nUpdates install when PowerPal is in the tray."),version=Note("Installed version: "+ReleaseUpdater.Current.ToString(3)),error=Note("");
         readonly Button save=ActionButton("Save settings"),close=ActionButton("Close");
         int activePage;
-        protected override float BaseFontPixels { get { return 12; } } // Windows' usual 9-point UI text at 100%.
         internal int ActivePage { get { return activePage; } }
         static Label Note(string text) { return new Label { Text=text,UseCompatibleTextRendering=false,TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=false }; }
         static Button ActionButton(string text) { return new Button { Text=text,FlatStyle=FlatStyle.Flat,Cursor=Cursors.Hand }; }

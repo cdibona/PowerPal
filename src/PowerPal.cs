@@ -120,7 +120,8 @@ namespace PowerPal {
     internal static class Program {
         internal static bool BackgroundOnStart(string[] args) { return !args.Contains("--show") || args.Contains("--background"); }
         [STAThread] static int Main(string[] args) {
-            if(args.Contains("--dpi-test") || args.Contains("--window-test")) Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException); Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+            if(args.Contains("--dpi-test") || args.Contains("--window-test") || args.Contains("--font-test")) Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException); Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+            if(args.Length>1 && args[0]=="--font-test") { try { FontTests.Run(args[1]); return 0; } catch(Exception ex) { Directory.CreateDirectory(args[1]); File.WriteAllText(Path.Combine(args[1],"font-result.txt"),ex.ToString()); return 1; } }
             var preferences=Preferences.Load(); Theme.Set(preferences.ThemeMode); DisplayScaling.Set(preferences.DisplayScalePercent);
             if(args.Length>1 && args[0]=="--window-test") { try { WindowTests.Run(args[1]); return 0; } catch(Exception ex) { Directory.CreateDirectory(args[1]); File.WriteAllText(Path.Combine(args[1],"window-result.txt"),ex.ToString()); return 1; } }
             if(args.Length>1 && args[0]=="--dpi-test") { try { UiTests.Run(args[1]); return 0; } catch(Exception ex) { Directory.CreateDirectory(args[1]); File.WriteAllText(Path.Combine(args[1],"ui-result.txt"),ex.ToString()); return 1; } }

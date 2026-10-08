@@ -18,6 +18,8 @@ Settings uses compact **Appearance**, **Recording**, and **Updates** pages. Its 
 
 Text fields, table rows and Settings descriptions reserve space using measured Windows font metrics. Sortable column headers show both up/down arrows, with the active direction highlighted. Column proportions stay stable after scale changes; event and process lists show whole rows where possible.
 
+Ordinary controls and table text use the Windows message font (normally Segoe UI 9 pt), scaled once to the selected display setting. DPI awareness starts before tray-icon/font creation so GDI and GDI+ use the same conversion. Large dashboard readings retain their visual hierarchy.
+
 ## Automatic power-user recording
 
 The dashboard shows source, net battery flow, charge, battery voltage, history charts, a sortable/filterable **Power users** table, a selected app's five-minute CPU/GPU/estimated GPU-watt graphs, and a persistent power/charging event log. The table includes CPU, GPU, memory, I/O, **Load %**, and **GPU W~**. Recording status and last-save times make background operation visible. Amber indicates a measurement or recording failure.
@@ -87,11 +89,11 @@ A bounded download, allowed-host check, and matching SHA-256/size must pass befo
 ## Build and release
 
 ```powershell
-./build.ps1 -Version 0.3.2
-./package.ps1 -Version 0.3.2 -Compiler 'C:/path/to/ISCC.exe'
+./build.ps1 -Version 0.3.3
+./package.ps1 -Version 0.3.3 -Compiler 'C:/path/to/ISCC.exe'
 ```
 
-Build uses the compiler shipped with Windows .NET Framework; no SDK download is needed. Packaging uses Inno Setup 6. Outputs include `bin/v0.3.2/PowerPal.exe` **and `PowerPal.exe.config`** (required for DPI support), versioned/stable installers in `dist`, and SHA-256 sidecars. The installer includes the config and MIT license.
+Build uses the compiler shipped with Windows .NET Framework; no SDK download is needed. Packaging uses Inno Setup 6. Outputs include `bin/v0.3.3/PowerPal.exe` **and `PowerPal.exe.config`** (required for DPI support), versioned/stable installers in `dist`, and SHA-256 sidecars. The installer includes the config and MIT license.
 
 GitHub Actions builds/tests on branches and PRs. Pushing a `vMAJOR.MINOR.PATCH` tag builds and publishes the installers. The tag supplies the version; prerelease tags are rejected. Review and merge source before tagging a production release.
 
@@ -101,6 +103,7 @@ GitHub Actions builds/tests on branches and PRs. Pushing a `vMAJOR.MINOR.PATCH` 
 - `--runtime-test C:/absolute/path/test-folder`: isolated 20-second test of automatic background logging with a configured top-three limit, startup visibility, open/minimize/close to tray. Add `--show` for installer-style startup. No update check or sign-in change.
 - `--window-test C:/absolute/path/test-folder`: opens real modal Settings from normal/maximized dashboards, changes every scale option, saves isolated preferences, and verifies window bounds, tray restoration, duplicate-dialog prevention, and top-app selection. Runs in CI.
 - `--dpi-test C:/absolute/path/test-folder`: confirms real PerMonitorV2 awareness, checks startup with a 125% override, and renders both themes at 100/125/150/175/200/225/250/300% layout scales. Verifies native text fit, all three Settings pages, open menus, horizontal text fit, fixed footer, compact dimensions, filter text, row heights, column-width round trips, and both sort directions in all seven headers, including painted arrow pixels after live refresh. Runs in release CI. Physical movement between differently scaled monitors still requires manual testing.
+- `--font-test C:/absolute/path/test-folder`: initializes drawing before the first control and creates the dashboard handle while hidden, reproducing tray startup. Compares live control/table text measurements and text-entry HFONTs against Windows' native message font at system scale and every override from 100–300%. Runs in release CI; high-DPI hardware is needed to reproduce the original startup mismatch.
 - `--sensor-probe C:/absolute/path/result.txt`: a bounded diagnostic with three direct NVIDIA samples followed by a 30-second automatic sampler/CPU-cost check. The diagnostic deliberately queries available NVIDIA sensors even when idle; normal recording uses activity gating.
 - `--activity-probe C:/absolute/path/result.txt`: checks real GPU/process counters and reports timings and current estimates.
 - `--probe C:/absolute/path/probe.csv`: one real battery sensor reading.

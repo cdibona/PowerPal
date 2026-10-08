@@ -14,7 +14,8 @@ namespace PowerPal {
         bool ready,layingOut,initialSizeApplied;
         protected bool FitContentOnScaleChange;
         protected bool FlexibleContentWidth;
-        protected virtual float BaseFontPixels { get { return 13; } }
+        // Windows' message font is normally Segoe UI 9 pt (12 logical pixels).
+        protected virtual float BaseFontPixels { get { return SystemFonts.MessageBoxFont.SizeInPoints*96f/72f; } }
         internal float FontPixels { get { return BaseFontPixels; } }
         readonly Dictionary<string,Font> fonts=new Dictionary<string,Font>();
         protected float ScaleFactor { get; private set; }
@@ -32,7 +33,15 @@ namespace PowerPal {
         protected int Px(float logical) { return (int)Math.Round(logical*ScaleFactor); }
         protected Font UiFont(float pixels,FontStyle style=FontStyle.Regular) {
             string key=ContentDpi+":"+pixels.ToString(System.Globalization.CultureInfo.InvariantCulture)+":"+style;
-            Font font; if(!fonts.TryGetValue(key,out font)) { font=new Font("Segoe UI",pixels*ScaleFactor,style,GraphicsUnit.Pixel); fonts[key]=font; } return font;
+            Font font;
+            if(!fonts.TryGetValue(key,out font)) {
+                // Framework TextRenderer ceilings its pixel -> point -> pixel
+                // conversion. Keep just below the integer to avoid a rounding
+                // error adding an entire pixel; native HFONT still rounds to it.
+                float em=Math.Max(1,(float)Math.Round(pixels*ScaleFactor))-.01f;
+                font=new Font(SystemFonts.MessageBoxFont.FontFamily,em,style,GraphicsUnit.Pixel); fonts[key]=font;
+            }
+            return font;
         }
         protected void SetScrollHeight(int pixels) { minimumContent.Height=(int)Math.Ceiling(pixels/ScaleFactor); }
         protected void RefreshContentLayout() { LayoutCanvas(); }

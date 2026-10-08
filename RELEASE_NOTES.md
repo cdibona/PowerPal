@@ -1,9 +1,8 @@
-## PowerPal 0.3.2
+## PowerPal 0.3.3
 
-- Rebuild Settings as compact Appearance, Recording and Updates pages instead of one tall form. The base layout is 440 × 300 logical pixels, with consistent 9-point text at 100% scale.
-- Replace the mixed native/custom dropdown and numeric sizing with measured menu buttons and a padded number field. Open menus use the same text scale as Settings.
-- Shorten and wrap descriptions, keep Save/Close visible, and scroll only the current page on smaller desktops. Remove unwanted horizontal scrollbars after scale changes.
-- Show the actual Windows and PowerPal scale percentages so overrides are clear. Theme and scale still apply and save immediately.
-- Test all three pages and open menus in both themes at 100–300%, including horizontal text fit, number-entry validation, saved preferences and normal/maximized dashboard behavior.
+- Fix oversized control text caused by GDI+ caching desktop DPI before Windows Forms enabled display scaling during tray startup. Establish PerMonitorV2 awareness before drawing or font creation.
+- Match buttons, Settings and process-table text to the Windows message font, normally Segoe UI 9 pt. Follow Windows applies the monitor scale once; manual display scales remain absolute overrides.
+- Correct a one-pixel rounding discrepancy between native text fields and Windows Forms text rendering.
+- Add a release regression that compares live text and text-entry font handles against Windows' own font at system scale and all 100–300% overrides, including hidden startup. Recheck Settings, menus, sorting, both themes and tray/window restoration.
 
-Use **Check updates**, wait for verification, then minimize to apply. Recording and existing history continue as before.
+Use **Check updates**, wait for verification, then minimize to apply. Choose **Settings > Appearance > Display scale > Follow Windows** to match the system scale.
